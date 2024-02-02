@@ -1256,7 +1256,7 @@ describe("esCROW", () => {
           await expectFail(
             () =>
               user2Program.methods
-                .transferOut()
+                .transferOut(null)
                 .accounts({
                   crow,
                   programConfig: findProgramConfigPda(),
@@ -1290,7 +1290,7 @@ describe("esCROW", () => {
           await sleep(3000)
           const balBefore = await umi.rpc.getBalance(user2.publicKey)
           await user2Program.methods
-            .transferOut()
+            .transferOut(null)
             .accounts({
               crow,
               programConfig: findProgramConfigPda(),

@@ -8,7 +8,10 @@ use anchor_spl::{
         },
         MasterEditionAccount, Metadata, MetadataAccount, TokenRecordAccount,
     },
-    token::{close_account, transfer, CloseAccount, Mint, Token, TokenAccount, Transfer},
+    token::{
+        close_account, spl_token::state::AccountState, transfer, CloseAccount, Mint, Token,
+        TokenAccount, Transfer,
+    },
 };
 
 use crate::{
@@ -270,19 +273,25 @@ pub fn transfer_out_handler(ctx: Context<TransferOut>, fee: Option<u64>) -> Resu
         }
     }
 
-    match metadata.token_standard.as_ref().unwrap() {
-        TokenStandard::ProgrammableNonFungible => {
-            let token_record = ctx
-                .accounts
-                .nft_token_record
-                .as_ref()
-                .expect("token_record expected");
+    let token_standard = metadata.token_standard.as_ref();
 
-            if token_record.state != TokenState::Unlocked {
-                return err!(CrowError::TokenIsLocked);
-            }
+    if token_standard.is_some()
+        && **token_standard.as_ref().unwrap() == TokenStandard::ProgrammableNonFungible
+    {
+        let token_record = ctx
+            .accounts
+            .nft_token_record
+            .as_ref()
+            .expect("token_record expected");
+
+        if token_record.state != TokenState::Unlocked {
+            return err!(CrowError::TokenIsLocked);
         }
-        _ => {}
+    } else {
+        require!(
+            ctx.accounts.nft_token.state != AccountState::Frozen,
+            CrowError::TokenIsLocked
+        );
     }
 
     require_gte!(current_time, asset.start_time, CrowError::CannotClaimYet);

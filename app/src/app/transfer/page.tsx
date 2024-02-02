@@ -101,7 +101,7 @@ export default function Create() {
   const [vestingType, setVestingType] = useState("none")
   const [nftMint, setNftMint] = useState("")
   const [nftMintError, setNftMintError] = useState<string | null>(null)
-  const [type, setType] = useState("nft")
+  const [type, setType] = useState("token")
   const [amount, setAmount] = useState("0")
   const [da, setDa] = useState<DAS.GetAssetResponse | null>(null)
   const [loading, setLoading] = useState(false)
@@ -365,9 +365,9 @@ export default function Create() {
                     color="primary"
                     fullWidth
                   >
-                    <ToggleButton value="nft">NFT</ToggleButton>
                     <ToggleButton value="token">Token</ToggleButton>
                     <ToggleButton value="sol">SOL</ToggleButton>
+                    <ToggleButton value="nft">NFT</ToggleButton>
                   </ToggleButtonGroup>
                   {type === "token" && (
                     <Stack spacing={2}>
