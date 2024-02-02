@@ -63,10 +63,10 @@ export default function Home() {
       <Center>
         <Stack spacing={2} alignItems="center">
           <Typography fontWeight="bold" textTransform="uppercase">
-            No drops to claim
+            No crows found
           </Typography>
-          <Button variant="contained" href="/create" LinkComponent={Link}>
-            Create a new drop/claim
+          <Button variant="contained" href="/transfer" LinkComponent={Link}>
+            Transfer something
           </Button>
         </Stack>
       </Center>
