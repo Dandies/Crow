@@ -11,7 +11,11 @@
         "@metaplex-foundation/umi": "^0.9.0",
         "@metaplex-foundation/umi-bundle-defaults": "^0.9.0",
         "@metaplex-foundation/umi-web3js-adapters": "^0.9.0",
-        "lodash": "^4.17.21"
+        "axios": "^1.6.7",
+        "bs58": "^5.0.0",
+        "lodash": "^4.17.21",
+        "react-virtualized-auto-sizer": "^1.0.21",
+        "react-window": "^1.8.10"
     },
     "devDependencies": {
         "@types/bn.js": "^5.1.0",

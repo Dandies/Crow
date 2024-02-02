@@ -2,20 +2,20 @@ use anchor_lang::prelude::*;
 use anchor_spl::{
     associated_token::AssociatedToken,
     metadata::{
-        mpl_token_metadata::instructions::TransferV1CpiBuilder, MasterEditionAccount, Metadata,
-        MetadataAccount, TokenRecordAccount,
+        mpl_token_metadata::{instructions::TransferV1CpiBuilder, types::TokenStandard},
+        MasterEditionAccount, Metadata, MetadataAccount, TokenRecordAccount,
     },
     token::{close_account, transfer, CloseAccount, Mint, Token, TokenAccount, Transfer},
 };
 
 use crate::{
     constants::{FEES_WALLET, FEE_WAIVER},
-    state::{Asset, AssetType, Crow, ProgramConfig},
-    CrowError,
+    state::{Asset, AssetType, Crow, ProgramConfig, Vesting},
+    CrowError, TransferInEvent,
 };
 
 #[derive(Accounts)]
-pub struct Fund<'info> {
+pub struct TransferIn<'info> {
     #[account(
         seeds = [b"program-config"],
         bump = program_config.bump
@@ -23,35 +23,53 @@ pub struct Fund<'info> {
     pub program_config: Box<Account<'info, ProgramConfig>>,
 
     #[account(
-        mut,
+        init_if_needed,
+        payer = authority,
+        space = Crow::LEN,
         seeds = [
             b"CROW",
-            crow.nft_mint.as_ref(),
-            crow.authority.as_ref()
+            nft_mint.key().as_ref()
         ],
-        bump = crow.bump,
+        bump,
     )]
-    pub crow: Account<'info, Crow>,
+    pub crow: Box<Account<'info, Crow>>,
+
+    #[account(
+        mint::decimals = 0,
+        constraint = nft_mint.supply == 1 @ CrowError::TokenNotNft
+    )]
+    pub nft_mint: Box<Account<'info, Mint>>,
+
+    #[account(
+        seeds = [
+            b"metadata",
+            Metadata::id().as_ref(),
+            nft_mint.key().as_ref()
+        ],
+        seeds::program = Metadata::id(),
+        bump,
+    )]
+    pub nft_metadata: Box<Account<'info, MetadataAccount>>,
 
     #[account(
         init,
         space = Asset::LEN,
         payer = authority
     )]
-    pub asset: Account<'info, Asset>,
+    pub asset: Box<Account<'info, Asset>>,
 
-    pub token_mint: Option<Account<'info, Mint>>,
+    pub token_mint: Option<Box<Account<'info, Mint>>>,
 
     #[account(mut)]
-    pub nft_metadata: Option<Account<'info, MetadataAccount>>,
-    pub nft_edition: Option<Account<'info, MasterEditionAccount>>,
+    pub escrow_nft_metadata: Option<Box<Account<'info, MetadataAccount>>>,
+    pub escrow_nft_edition: Option<Box<Account<'info, MasterEditionAccount>>>,
 
     #[account(
         mut,
         associated_token::mint = token_mint,
         associated_token::authority = authority
     )]
-    pub token_account: Option<Account<'info, TokenAccount>>,
+    pub token_account: Option<Box<Account<'info, TokenAccount>>>,
 
     #[account(
         init_if_needed,
@@ -59,7 +77,7 @@ pub struct Fund<'info> {
         associated_token::mint = token_mint,
         associated_token::authority = crow
     )]
-    pub destination_token: Option<Account<'info, TokenAccount>>,
+    pub destination_token: Option<Box<Account<'info, TokenAccount>>>,
 
     #[account(mut)]
     pub authority: Signer<'info>,
@@ -95,7 +113,7 @@ pub struct Fund<'info> {
     pub auth_rules_program: Option<AccountInfo<'info>>,
 }
 
-impl<'info> Fund<'info> {
+impl<'info> TransferIn<'info> {
     pub fn transfer_token_ctx(&self) -> CpiContext<'_, '_, '_, 'info, Transfer<'info>> {
         let cpi_accounts = Transfer {
             from: self
@@ -123,8 +141,8 @@ impl<'info> Fund<'info> {
         let destination_token = self.destination_token.as_ref().unwrap().to_account_info();
         let destination_owner = &self.crow.to_account_info();
         let mint = &self.token_mint.as_ref().unwrap().to_account_info();
-        let metadata = &self.nft_metadata.as_ref().unwrap().to_account_info();
-        let edition = &self.nft_edition.as_ref().unwrap().to_account_info();
+        let metadata = &self.escrow_nft_metadata.as_ref().unwrap().to_account_info();
+        let edition = &self.escrow_nft_edition.as_ref().unwrap().to_account_info();
         let system_program = &self.system_program.to_account_info();
         let sysvar_instructions = &self.sysvar_instructions.to_account_info();
         let spl_token_program = &&self.token_program.to_account_info();
@@ -175,22 +193,45 @@ impl<'info> Fund<'info> {
     }
 }
 
-pub fn fund_handler(
-    ctx: Context<Fund>,
+pub fn transfer_in_handler(
+    ctx: Context<TransferIn>,
     asset_type: AssetType,
     amount: Option<u64>,
     start_time: Option<i64>,
+    end_time: Option<i64>,
+    vesting: Vesting,
+    fee: Option<u64>,
 ) -> Result<()> {
     let current_time = Clock::get().unwrap().unix_timestamp;
     let crow = &ctx.accounts.crow;
     let start_time = start_time.unwrap_or(current_time);
     let maybe_token_mint = &ctx.accounts.token_mint;
+    let fees_wallet = &ctx.accounts.fees_wallet;
 
     let fees_waived = ctx.accounts.fee_waiver.is_some();
 
-    if !fees_waived {
+    if fees_waived {
+        let fee = fee.unwrap_or(0);
+        if fee > 0 {
+            let ix = anchor_lang::solana_program::system_instruction::transfer(
+                &ctx.accounts.authority.key(),
+                &fees_wallet.key(),
+                fee,
+            );
+
+            anchor_lang::solana_program::program::invoke(
+                &ix,
+                &[
+                    ctx.accounts.authority.to_account_info(),
+                    fees_wallet.to_account_info(),
+                ],
+            )?;
+        }
+    } else {
+        require!(fee.is_some(), CrowError::FeeWaiverNotProvided);
+
         let tx_fee = ctx.accounts.program_config.distribute_fee;
-        let fees_wallet = &ctx.accounts.fees_wallet;
+
         if tx_fee > 0 {
             let ix = anchor_lang::solana_program::system_instruction::transfer(
                 &ctx.accounts.authority.key(),
@@ -206,6 +247,36 @@ pub fn fund_handler(
                 ],
             )?;
         }
+    }
+
+    if asset_type == AssetType::Nft {
+        require_keys_neq!(
+            ctx.accounts
+                .token_mint
+                .as_ref()
+                .expect("Expected token mint")
+                .key(),
+            ctx.accounts.crow.nft_mint,
+            CrowError::NftCeption
+        );
+        match vesting {
+            Vesting::None => {}
+            _ => return err!(CrowError::InvalidVesting),
+        }
+    }
+
+    match vesting {
+        Vesting::Intervals { num_intervals } => {
+            require!(end_time.is_some(), CrowError::EndTimeRequired);
+            let end_time = end_time.unwrap();
+            require_gt!(end_time, start_time, CrowError::InvalidEndTime);
+            require_gt!(num_intervals, 1, CrowError::NotEnoughIntervals)
+        }
+        Vesting::Linear => {
+            require!(end_time.is_some(), CrowError::EndTimeRequired);
+            require_gt!(end_time.unwrap(), start_time, CrowError::InvalidEndTime);
+        }
+        Vesting::None => {}
     }
 
     match asset_type {
@@ -253,14 +324,36 @@ pub fn fund_handler(
 
     let asset = &mut ctx.accounts.asset;
 
-    **asset = Asset::init(
+    ***asset = Asset::init(
         crow.key(),
+        ctx.accounts.authority.key(),
         asset_type,
         maybe_token_mint.as_ref().map(|token_mint| token_mint.key()),
         amount.unwrap_or(1),
         start_time,
-        fees_waived,
+        end_time,
+        vesting,
+        fees_waived && fee.unwrap_or(0) == 0,
     );
 
+    if crow.nft_mint == Pubkey::default() {
+        if !matches!(
+            ctx.accounts
+                .nft_metadata
+                .token_standard
+                .as_ref()
+                .unwrap_or(&TokenStandard::NonFungible),
+            TokenStandard::NonFungible | TokenStandard::ProgrammableNonFungible
+        ) {
+            return err!(CrowError::TokenNotNft);
+        }
+
+        let crow = &mut ctx.accounts.crow;
+        ***crow = Crow::init(ctx.accounts.nft_mint.key(), ctx.bumps.crow)
+    }
+
+    emit!(TransferInEvent {
+        asset: ctx.accounts.asset.key()
+    });
     Ok(())
 }

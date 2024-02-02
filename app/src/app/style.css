@@ -1,0 +1,11 @@
+.wallet-adapter-button-trigger {
+  background-color: #6cbec9;
+}
+
+.wallet-adapter-dropdown {
+  z-index: 1000;
+}
+
+.wallet-adapter-button-start-icon {
+  display: none;
+}

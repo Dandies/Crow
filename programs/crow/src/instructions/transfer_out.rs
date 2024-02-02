@@ -8,19 +8,17 @@ use anchor_spl::{
         },
         MasterEditionAccount, Metadata, MetadataAccount, TokenRecordAccount,
     },
-    token::{
-        close_account, transfer, CloseAccount, Mint, Token, TokenAccount, Transfer as TransferToken,
-    },
+    token::{close_account, transfer, CloseAccount, Mint, Token, TokenAccount, Transfer},
 };
 
 use crate::{
     constants::{FEES_WALLET, FEE_WAIVER},
-    state::{Asset, AssetType, Crow, ProgramConfig},
-    CrowError,
+    state::{Asset, AssetType, Crow, ProgramConfig, Vesting},
+    CrowError, TransferOutEvent,
 };
 
 #[derive(Accounts)]
-pub struct Transfer<'info> {
+pub struct TransferOut<'info> {
     #[account(
         seeds = [b"program-config"],
         bump = program_config.bump
@@ -31,17 +29,16 @@ pub struct Transfer<'info> {
         seeds = [
             b"CROW",
             crow.nft_mint.as_ref(),
-            crow.authority.as_ref(),
         ],
         bump = crow.bump,
-        has_one = authority,
         has_one = nft_mint
     )]
     pub crow: Box<Account<'info, Crow>>,
 
     #[account(
         mut,
-        has_one = crow
+        has_one = crow,
+        has_one = authority
     )]
     pub asset: Box<Account<'info, Asset>>,
 
@@ -90,8 +87,6 @@ pub struct Transfer<'info> {
     pub nft_token_record: Option<Box<Account<'info, TokenRecordAccount>>>,
 
     #[account(
-        init_if_needed,
-        payer = owner,
         associated_token::mint = nft_mint,
         associated_token::authority = owner,
         constraint = nft_token.amount == 1 @ CrowError::Unauthorized
@@ -139,9 +134,9 @@ pub struct Transfer<'info> {
     pub auth_rules_program: Option<AccountInfo<'info>>,
 }
 
-impl<'info> Transfer<'info> {
-    pub fn transfer_token_ctx(&self) -> CpiContext<'_, '_, '_, 'info, TransferToken<'info>> {
-        let cpi_accounts = TransferToken {
+impl<'info> TransferOut<'info> {
+    pub fn transfer_token_ctx(&self) -> CpiContext<'_, '_, '_, 'info, Transfer<'info>> {
+        let cpi_accounts = Transfer {
             from: self
                 .token_account
                 .as_ref()
@@ -163,7 +158,6 @@ impl<'info> Transfer<'info> {
     pub fn transfer_nft(&self) -> Result<()> {
         let crow = &self.crow;
         let nft_mint_key = crow.nft_mint;
-        let authority_key = crow.authority;
         let bump = crow.bump;
         let metadata_program = &self.metadata_program;
         let token = &self.token_account.as_ref().unwrap().to_account_info();
@@ -208,12 +202,7 @@ impl<'info> Transfer<'info> {
             .destination_token_record(destination_token_record)
             .amount(1);
 
-        let authority_seed = &[
-            &b"CROW"[..],
-            &nft_mint_key.as_ref(),
-            &authority_key.as_ref(),
-            &[bump],
-        ];
+        let authority_seed = &[&b"CROW"[..], &nft_mint_key.as_ref(), &[bump]];
 
         // performs the CPI
         cpi_transfer.invoke_signed(&[authority_seed])?;
@@ -223,7 +212,7 @@ impl<'info> Transfer<'info> {
     pub fn close_account_ctx(&self) -> CpiContext<'_, '_, '_, 'info, CloseAccount<'info>> {
         let cpi_accounts = CloseAccount {
             account: self.token_account.as_ref().unwrap().to_account_info(),
-            destination: self.authority.to_account_info(),
+            destination: self.fees_wallet.to_account_info(),
             authority: self.crow.to_account_info(),
         };
         let cpi_program = self.token_program.to_account_info();
@@ -231,32 +220,53 @@ impl<'info> Transfer<'info> {
     }
 }
 
-pub fn transfer_handler(ctx: Context<Transfer>) -> Result<()> {
+pub fn transfer_out_handler(ctx: Context<TransferOut>, fee: Option<u64>) -> Result<()> {
     let current_time = Clock::get().unwrap().unix_timestamp;
     let asset = &ctx.accounts.asset;
     let crow = &ctx.accounts.crow;
     let metadata = &ctx.accounts.nft_metadata;
     let nft_mint_key = crow.nft_mint;
-    let authority_key = crow.authority;
+    let fees_wallet = &ctx.accounts.fees_wallet;
     let bump = crow.bump;
 
-    if !asset.fees_waived && ctx.accounts.fee_waiver.is_none() {
-        let tx_fee = ctx.accounts.program_config.claim_fee;
-        let fees_wallet = &ctx.accounts.fees_wallet;
-        if tx_fee > 0 {
-            let ix = anchor_lang::solana_program::system_instruction::transfer(
-                &ctx.accounts.owner.key(),
-                &fees_wallet.key(),
-                tx_fee,
-            );
+    if !asset.fees_waived {
+        if ctx.accounts.fee_waiver.is_none() {
+            require!(fee.is_none(), CrowError::FeeWaiverNotProvided);
 
-            anchor_lang::solana_program::program::invoke(
-                &ix,
-                &[
-                    ctx.accounts.owner.to_account_info(),
-                    fees_wallet.to_account_info(),
-                ],
-            )?;
+            let tx_fee = ctx.accounts.program_config.claim_fee;
+
+            if tx_fee > 0 {
+                let ix = anchor_lang::solana_program::system_instruction::transfer(
+                    &ctx.accounts.owner.key(),
+                    &fees_wallet.key(),
+                    tx_fee,
+                );
+
+                anchor_lang::solana_program::program::invoke(
+                    &ix,
+                    &[
+                        ctx.accounts.owner.to_account_info(),
+                        fees_wallet.to_account_info(),
+                    ],
+                )?;
+            }
+        } else {
+            let fee = fee.unwrap_or(0);
+            if fee > 0 {
+                let ix = anchor_lang::solana_program::system_instruction::transfer(
+                    &ctx.accounts.owner.key(),
+                    &fees_wallet.key(),
+                    fee,
+                );
+
+                anchor_lang::solana_program::program::invoke(
+                    &ix,
+                    &[
+                        ctx.accounts.owner.to_account_info(),
+                        fees_wallet.to_account_info(),
+                    ],
+                )?;
+            }
         }
     }
 
@@ -277,24 +287,72 @@ pub fn transfer_handler(ctx: Context<Transfer>) -> Result<()> {
 
     require_gte!(current_time, asset.start_time, CrowError::CannotClaimYet);
 
-    let authority_seed = &[
-        &b"CROW"[..],
-        &nft_mint_key.as_ref(),
-        &authority_key.as_ref(),
-        &[bump],
-    ];
+    let authority_seed = &[&b"CROW"[..], &nft_mint_key.as_ref(), &[bump]];
+
+    let amount_to_claim = match asset.vesting {
+        Vesting::Linear => {
+            let end_time = asset.end_time.unwrap();
+            let total_time = end_time - asset.start_time;
+            let ref_time = i64::min(current_time, end_time);
+            let time_spent = ref_time - asset.start_time;
+
+            let ratio = (time_spent * 100 / total_time) as u64;
+
+            let claimable_balance = asset.amount * ratio / 100;
+
+            claimable_balance - asset.claimed
+        }
+        Vesting::Intervals { num_intervals } => {
+            let num_intervals = num_intervals as i64;
+            let total_time = asset.end_time.expect("End time expected") - asset.start_time;
+            let time_spent = current_time - asset.start_time;
+
+            let time_per_interval = total_time / num_intervals;
+            let amount_per_interval = asset.amount / num_intervals as u64;
+
+            let num_intervals_completed = (time_spent / time_per_interval) as u64;
+            let claimable_balance = amount_per_interval * num_intervals_completed;
+            claimable_balance - asset.claimed
+        }
+        _ => asset.balance,
+    };
+
+    require_gt!(amount_to_claim, 0, CrowError::NothingToClaim);
+
+    let new_balance = asset
+        .balance
+        .checked_sub(amount_to_claim)
+        .ok_or(CrowError::ProgramSubError)?;
+
+    let should_close = new_balance == 0;
 
     match asset.asset_type {
         AssetType::Sol => {
-            let destination = ctx.accounts.recipient.to_account_info();
-            ctx.accounts.asset.close(destination)?;
+            let asset_account_info = ctx.accounts.asset.to_account_info();
+            let recipient_account_info = ctx.accounts.recipient.to_account_info();
+            let balance = asset_account_info.get_lamports();
+            let min_balance = Rent::get()
+                .unwrap()
+                .minimum_balance(asset_account_info.data_len());
+
+            let remainder = balance
+                .checked_sub(amount_to_claim)
+                .ok_or(CrowError::ProgramSubError)?;
+
+            if remainder < min_balance {
+                let destination = ctx.accounts.recipient.to_account_info();
+                ctx.accounts.asset.close(destination)?;
+            } else {
+                asset_account_info.sub_lamports(amount_to_claim)?;
+                recipient_account_info.add_lamports(amount_to_claim)?;
+            }
         }
         AssetType::Token => {
             transfer(
                 ctx.accounts
                     .transfer_token_ctx()
                     .with_signer(&[authority_seed]),
-                asset.amount,
+                amount_to_claim,
             )?;
 
             let remaining_balance = ctx
@@ -303,7 +361,7 @@ pub fn transfer_handler(ctx: Context<Transfer>) -> Result<()> {
                 .as_ref()
                 .unwrap()
                 .amount
-                .checked_sub(asset.amount)
+                .checked_sub(amount_to_claim)
                 .ok_or(CrowError::ProgramSubError)?;
 
             if remaining_balance <= 0 {
@@ -313,8 +371,6 @@ pub fn transfer_handler(ctx: Context<Transfer>) -> Result<()> {
                         .with_signer(&[authority_seed]),
                 )?;
             }
-            let destination: AccountInfo<'_> = ctx.accounts.authority.to_account_info();
-            ctx.accounts.asset.close(destination)?;
         }
         AssetType::Nft => {
             ctx.accounts.transfer_nft()?;
@@ -324,10 +380,22 @@ pub fn transfer_handler(ctx: Context<Transfer>) -> Result<()> {
                     .close_account_ctx()
                     .with_signer(&[authority_seed]),
             )?;
-            let destination = ctx.accounts.authority.to_account_info();
-            ctx.accounts.asset.close(destination)?;
         }
         _ => return err!(CrowError::AssetTypeNotSupported),
     }
+
+    if should_close && asset.asset_type != AssetType::Sol {
+        let destination: AccountInfo<'_> = ctx.accounts.authority.to_account_info();
+        ctx.accounts.asset.close(destination)?;
+    } else {
+        let asset = &mut ctx.accounts.asset;
+        asset.balance = new_balance;
+        asset.claimed += amount_to_claim;
+    }
+
+    emit!(TransferOutEvent {
+        asset: ctx.accounts.asset.key()
+    });
+
     Ok(())
 }

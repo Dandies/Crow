@@ -5,10 +5,10 @@ seeds = false
 skip-lint = false
 
 [programs.localnet]
-crow = "crow3inG2W8RJQW7iZ7ESo1r5rHbfCarikMeQhL1auG"
+crow = "Crow6rDB5ZhGGqV2uXAG6Ta7aLvyw22vRNAcxd7mu2sv"
 
 [programs.mainnet]
-crow = "crow3inG2W8RJQW7iZ7ESo1r5rHbfCarikMeQhL1auG"
+crow = "Crow6rDB5ZhGGqV2uXAG6Ta7aLvyw22vRNAcxd7mu2sv"
 
 [test.validator]
 url = "https://api.devnet.solana.com"

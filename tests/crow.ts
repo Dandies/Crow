@@ -35,20 +35,19 @@ import { umi } from "./helpers/umi"
 import { assert } from "chai"
 import { BN } from "bn.js"
 import { toWeb3JsKeypair } from "@metaplex-foundation/umi-web3js-adapters"
-import { FEES_WALLET, assertErrorCode, expectFail, sleep } from "./helpers/utils"
+import { FEES_WALLET, assertErrorCode, expectFail, getTokenAmount, sleep } from "./helpers/utils"
 import { createToken } from "./helpers/create-token"
-import { createAssociatedToken, safeFetchToken } from "@metaplex-foundation/mpl-toolbox"
+import { createAssociatedToken, fetchToken, safeFetchToken } from "@metaplex-foundation/mpl-toolbox"
 
 const TX_FEE = 5000n
 const DISTRIBUTE_FEE = sol(0.001).basisPoints
 const CLAIM_FEE = sol(0.001).basisPoints
 
-describe("crow", () => {
+describe("esCROW", () => {
   let user: Keypair
   let user2: Keypair
   let userProgram: Program<Crow>
   let user2Program: Program<Crow>
-  let programConfig: anchor.IdlAccounts<Crow>["programConfig"]
   before(async () => {
     user = await createNewUser()
     user2 = await createNewUser()
@@ -62,8 +61,6 @@ describe("crow", () => {
         programData: findProgramDataAddress(),
       })
       .rpc()
-
-    programConfig = await adminProgram.account.programConfig.fetch(findProgramConfigPda())
   })
 
   describe("Happy path", () => {
@@ -72,23 +69,7 @@ describe("crow", () => {
 
     before(async () => {
       nft = await createNft(umi, true, undefined, user2.publicKey)
-      crow = findCrowPda(nft.publicKey, user.publicKey)
-    })
-
-    it("Can initialize a new Crow", async () => {
-      await userProgram.methods
-        .init()
-        .accounts({
-          crow,
-          nftMint: nft.publicKey,
-          nftMetadata: nft.metadata.publicKey,
-        })
-        .rpc()
-
-      const crowAccount = await userProgram.account.crow.fetch(crow)
-
-      assert.equal(crowAccount.nftMint.toBase58(), nft.publicKey, "Expected NFT Mint to be set to Crow")
-      assert.equal(crowAccount.authority.toBase58(), user.publicKey, "Expected authority to be set")
+      crow = findCrowPda(nft.publicKey)
     })
 
     describe("SOL", () => {
@@ -96,7 +77,7 @@ describe("crow", () => {
       it("can fund the crow with SOL", async () => {
         const balBefore = await umi.rpc.getBalance(user.publicKey)
         const tx = await userProgram.methods
-          .fund({ sol: {} }, new BN(sol(1).basisPoints.toString()), null)
+          .transferIn({ sol: {} }, new BN(sol(1).basisPoints.toString()), null, null, { none: {} })
           .accounts({
             crow,
             programConfig: findProgramConfigPda(),
@@ -104,8 +85,10 @@ describe("crow", () => {
             feeWaiver: null,
             asset: asset.publicKey,
             tokenMint: null,
-            nftMetadata: null,
-            nftEdition: null,
+            nftMint: nft.publicKey,
+            nftMetadata: nft.metadata.publicKey,
+            escrowNftEdition: null,
+            escrowNftMetadata: null,
             tokenAccount: null,
             destinationToken: null,
             ownerTokenRecord: null,
@@ -127,6 +110,8 @@ describe("crow", () => {
         const blockTime = await umi.rpc.getBlockTime(slot)
 
         const assetAccount = await userProgram.account.asset.fetch(asset.publicKey)
+        const crowAccLamports = await umi.rpc.getBalance(crow)
+
         assert.equal(BigInt(assetAccount.amount.toString()), sol(1).basisPoints, "Expected amount to be 1 sol")
         assert.equal(
           BigInt(assetAccount.startTime.toString()),
@@ -136,7 +121,7 @@ describe("crow", () => {
 
         assert.equal(
           balBefore.basisPoints - balAfter.basisPoints,
-          sol(1).basisPoints + TX_FEE * 2n + DISTRIBUTE_FEE,
+          sol(1).basisPoints + TX_FEE * 2n + DISTRIBUTE_FEE + crowAccLamports.basisPoints,
           "Expected balance to reduce by 1 sol + tx fee"
         )
       })
@@ -145,7 +130,7 @@ describe("crow", () => {
         await expectFail(
           () =>
             userProgram.methods
-              .transfer()
+              .transferOut()
               .accounts({
                 crow,
                 programConfig: findProgramConfigPda(),
@@ -200,7 +185,7 @@ describe("crow", () => {
         await expectFail(
           () =>
             user2Program.methods
-              .transfer()
+              .transferOut()
               .accounts({
                 crow,
                 programConfig: findProgramConfigPda(),
@@ -255,7 +240,7 @@ describe("crow", () => {
 
         const balBefore = await umi.rpc.getBalance(user2.publicKey)
         await user2Program.methods
-          .transfer()
+          .transferOut()
           .accounts({
             crow,
             programConfig: findProgramConfigPda(),
@@ -295,13 +280,15 @@ describe("crow", () => {
         tokenMint = await createToken(umi, tokenAmount(100, "token", 9).basisPoints, 9, undefined, user.publicKey)
       })
 
-      it("can fund a Crow which vests for 3 seconds", async () => {
+      it("can fund a Crow which can be claimed in 3 seconds", async () => {
         const balBefore = await umi.rpc.getBalance(user.publicKey)
         await userProgram.methods
-          .fund(
+          .transferIn(
             { token: {} },
             new BN(tokenAmount(10, "token", 9).basisPoints.toString()),
-            new BN(Date.now() / 1000 + 3)
+            new BN(Date.now() / 1000 + 3),
+            null,
+            { none: {} }
           )
           .accounts({
             crow,
@@ -312,8 +299,10 @@ describe("crow", () => {
             tokenMint,
             tokenAccount: getTokenAccount(tokenMint, user.publicKey),
             destinationToken: getTokenAccount(tokenMint, crow),
-            nftMetadata: null,
-            nftEdition: null,
+            nftMetadata: nft.metadata.publicKey,
+            nftMint: nft.publicKey,
+            escrowNftEdition: null,
+            escrowNftMetadata: null,
             ownerTokenRecord: null,
             destinationTokenRecord: null,
             metadataProgram: MPL_TOKEN_METADATA_PROGRAM_ID,
@@ -339,7 +328,7 @@ describe("crow", () => {
         await expectFail(
           () =>
             user2Program.methods
-              .transfer()
+              .transferOut()
               .accounts({
                 crow,
                 programConfig: findProgramConfigPda(),
@@ -374,7 +363,7 @@ describe("crow", () => {
         const tokenBalBefore = (await safeFetchToken(umi, getTokenAccount(tokenMint, user2.publicKey)))?.amount || 0n
         const balBefore = await umi.rpc.getBalance(user2.publicKey)
         await user2Program.methods
-          .transfer()
+          .transferOut()
           .accounts({
             crow,
             programConfig: findProgramConfigPda(),
@@ -435,7 +424,7 @@ describe("crow", () => {
 
       it("can add an NFT to a crow", async () => {
         await userProgram.methods
-          .fund({ nft: {} }, null, null)
+          .transferIn({ nft: {} }, null, null, null, { none: {} })
           .accounts({
             crow,
             programConfig: findProgramConfigPda(),
@@ -445,8 +434,10 @@ describe("crow", () => {
             tokenMint: escrowNft.publicKey,
             tokenAccount: getTokenAccount(escrowNft.publicKey, user.publicKey),
             destinationToken: getTokenAccount(escrowNft.publicKey, crow),
-            nftMetadata: escrowNft.metadata.publicKey,
-            nftEdition: escrowNft.edition.publicKey,
+            escrowNftMetadata: escrowNft.metadata.publicKey,
+            escrowNftEdition: escrowNft.edition.publicKey,
+            nftMetadata: nft.metadata.publicKey,
+            nftMint: nft.publicKey,
             ownerTokenRecord: null,
             destinationTokenRecord: null,
             metadataProgram: MPL_TOKEN_METADATA_PROGRAM_ID,
@@ -485,7 +476,7 @@ describe("crow", () => {
         await expectFail(
           () =>
             user2Program.methods
-              .transfer()
+              .transferOut()
               .accounts({
                 crow,
                 programConfig: findProgramConfigPda(),
@@ -523,8 +514,9 @@ describe("crow", () => {
         const accLamports = acc.exists && acc.lamports
         const token = await umi.rpc.getAccount(getTokenAccount(escrowNft.publicKey, crow))
         const tokenLamports = token.exists && token.lamports
+        const feesWalletBefore = await umi.rpc.getBalance(FEES_WALLET)
         await user3Program.methods
-          .transfer()
+          .transferOut()
           .accounts({
             crow,
             programConfig: findProgramConfigPda(),
@@ -550,6 +542,7 @@ describe("crow", () => {
             recipient: user3.publicKey,
           })
           .rpc()
+        const feesWalletAfter = await umi.rpc.getBalance(FEES_WALLET)
         const tokenAfter =
           (await safeFetchToken(umi, getTokenAccount(escrowNft.publicKey, user3.publicKey)))?.amount || 0n
 
@@ -558,8 +551,14 @@ describe("crow", () => {
         assert.equal(tokenAfter - tokenBefore, 1n, "Expected NFT to have been claimed")
         assert.equal(
           balAfter.basisPoints - balBefore.basisPoints,
-          tokenLamports.basisPoints + accLamports.basisPoints,
-          "Expected authority to be repaid the original rent"
+          accLamports.basisPoints,
+          "Expected authority to be repaid the acc opening rent"
+        )
+
+        assert.equal(
+          feesWalletAfter.basisPoints - feesWalletBefore.basisPoints,
+          tokenLamports.basisPoints + CLAIM_FEE,
+          "Expected the fees wallet to receive the claim fee and token acc rent"
         )
 
         await transferV1(umi, {
@@ -586,7 +585,7 @@ describe("crow", () => {
 
       it("Can send a pNFT to a Crow", async () => {
         await userProgram.methods
-          .fund({ nft: {} }, null, null)
+          .transferIn({ nft: {} }, null, null, null, { none: {} })
           .accounts({
             crow,
             programConfig: findProgramConfigPda(),
@@ -596,8 +595,10 @@ describe("crow", () => {
             tokenMint: escrowNft.publicKey,
             tokenAccount: getTokenAccount(escrowNft.publicKey, user.publicKey),
             destinationToken: getTokenAccount(escrowNft.publicKey, crow),
-            nftMetadata: escrowNft.metadata.publicKey,
-            nftEdition: escrowNft.edition.publicKey,
+            nftMetadata: nft.metadata.publicKey,
+            nftMint: nft.publicKey,
+            escrowNftMetadata: escrowNft.metadata.publicKey,
+            escrowNftEdition: escrowNft.edition.publicKey,
             ownerTokenRecord: getTokenRecordPda(escrowNft.publicKey, user.publicKey),
             destinationTokenRecord: getTokenRecordPda(escrowNft.publicKey, crow),
             metadataProgram: MPL_TOKEN_METADATA_PROGRAM_ID,
@@ -619,7 +620,7 @@ describe("crow", () => {
         const token = await umi.rpc.getAccount(getTokenAccount(escrowNft.publicKey, crow))
         const tokenLamports = token.exists && token.lamports
         await user2Program.methods
-          .transfer()
+          .transferOut()
           .accounts({
             crow,
             programConfig: findProgramConfigPda(),
@@ -654,7 +655,7 @@ describe("crow", () => {
         assert.equal(tokenAfter - tokenBefore, 1n, "Expected NFT to have been claimed")
         assert.equal(
           balAfter.basisPoints - balBefore.basisPoints,
-          tokenLamports.basisPoints + accLamports.basisPoints,
+          accLamports.basisPoints,
           "Expected authority to be repaid the original rent"
         )
       })
@@ -672,7 +673,9 @@ describe("crow", () => {
       it("can fund once", async () => {
         const balBefore = await umi.rpc.getBalance(user.publicKey)
         await userProgram.methods
-          .fund({ token: {} }, new BN(tokenAmount(10, "token", 9).basisPoints.toString()), null)
+          .transferIn({ token: {} }, new BN(tokenAmount(10, "token", 9).basisPoints.toString()), null, null, {
+            none: {},
+          })
           .accounts({
             crow,
             programConfig: findProgramConfigPda(),
@@ -682,8 +685,10 @@ describe("crow", () => {
             tokenMint,
             tokenAccount: getTokenAccount(tokenMint, user.publicKey),
             destinationToken: getTokenAccount(tokenMint, crow),
-            nftMetadata: null,
-            nftEdition: null,
+            nftMint: nft.publicKey,
+            nftMetadata: nft.metadata.publicKey,
+            escrowNftMetadata: null,
+            escrowNftEdition: null,
             ownerTokenRecord: null,
             destinationTokenRecord: null,
             metadataProgram: MPL_TOKEN_METADATA_PROGRAM_ID,
@@ -708,7 +713,9 @@ describe("crow", () => {
       it("can fund again, with fees waived", async () => {
         const balBefore = await umi.rpc.getBalance(user.publicKey)
         await userProgram.methods
-          .fund({ token: {} }, new BN(tokenAmount(15, "token", 9).basisPoints.toString()), null)
+          .transferIn({ token: {} }, new BN(tokenAmount(15, "token", 9).basisPoints.toString()), null, null, {
+            none: {},
+          })
           .accounts({
             crow,
             programConfig: findProgramConfigPda(),
@@ -718,8 +725,10 @@ describe("crow", () => {
             feeWaiver: FEE_WAIVER.publicKey,
             tokenAccount: getTokenAccount(tokenMint, user.publicKey),
             destinationToken: getTokenAccount(tokenMint, crow),
-            nftMetadata: null,
-            nftEdition: null,
+            nftMetadata: nft.metadata.publicKey,
+            nftMint: nft.mint.publicKey,
+            escrowNftEdition: null,
+            escrowNftMetadata: null,
             ownerTokenRecord: null,
             destinationTokenRecord: null,
             metadataProgram: MPL_TOKEN_METADATA_PROGRAM_ID,
@@ -741,10 +750,11 @@ describe("crow", () => {
 
       it("can claim from the first", async () => {
         const tokenBalBefore = (await safeFetchToken(umi, getTokenAccount(tokenMint, user2.publicKey)))?.amount || 0n
-        const balBefore = await umi.rpc.getBalance(user.publicKey)
-        const acc = await umi.rpc.getAccount(asset1.publicKey)
+        const creatorBalBefore = await umi.rpc.getBalance(user.publicKey)
+        const accBal = await umi.rpc.getBalance(asset1.publicKey)
+        const userBalBefore = await umi.rpc.getBalance(user2.publicKey)
         await user2Program.methods
-          .transfer()
+          .transferOut()
           .accounts({
             crow,
             programConfig: findProgramConfigPda(),
@@ -770,9 +780,10 @@ describe("crow", () => {
             recipient: user2.publicKey,
           })
           .rpc()
-
+        const userBalAfter = await umi.rpc.getBalance(user2.publicKey)
         const tokenBalAfter = (await safeFetchToken(umi, getTokenAccount(tokenMint, user2.publicKey)))?.amount || 0n
-        const balAfter = await umi.rpc.getBalance(user.publicKey)
+        const creatorBalAfter = await umi.rpc.getBalance(user.publicKey)
+        const tokenLamports = await umi.rpc.getBalance(getTokenAccount(tokenMint, user2.publicKey))
 
         assert.equal(
           tokenBalAfter - tokenBalBefore,
@@ -781,19 +792,27 @@ describe("crow", () => {
         )
 
         assert.equal(
-          balAfter.basisPoints - balBefore.basisPoints,
-          acc.exists && acc.lamports.basisPoints,
+          creatorBalAfter.basisPoints - creatorBalBefore.basisPoints,
+          accBal.basisPoints,
           "Expected only the balance of the asset account to be sent to the creator"
+        )
+
+        assert.equal(
+          userBalBefore.basisPoints - userBalAfter.basisPoints,
+          TX_FEE + CLAIM_FEE + tokenLamports.basisPoints,
+          "Expected claimer to pay tx fee, claim fee and acc opening rent"
         )
       })
 
       it("can claim from the second, closing the token account", async () => {
         const tokenBalBefore = (await safeFetchToken(umi, getTokenAccount(tokenMint, user2.publicKey)))?.amount || 0n
-        const balBefore = await umi.rpc.getBalance(user.publicKey)
+        const creatorBalBefore = await umi.rpc.getBalance(user.publicKey)
         const accLamports = await umi.rpc.getBalance(asset2.publicKey)
         const tokenLamports = await umi.rpc.getBalance(getTokenAccount(tokenMint, crow))
+        const feesWalletBefore = await umi.rpc.getBalance(FEES_WALLET)
+        const claimerBalBefore = await umi.rpc.getBalance(user2.publicKey)
         await user2Program.methods
-          .transfer()
+          .transferOut()
           .accounts({
             crow,
             programConfig: findProgramConfigPda(),
@@ -819,9 +838,10 @@ describe("crow", () => {
             recipient: user2.publicKey,
           })
           .rpc()
-
+        const feesWalletAfter = await umi.rpc.getBalance(FEES_WALLET)
+        const claimerBalAfter = await umi.rpc.getBalance(user2.publicKey)
         const tokenBalAfter = (await safeFetchToken(umi, getTokenAccount(tokenMint, user2.publicKey)))?.amount || 0n
-        const balAfter = await umi.rpc.getBalance(user.publicKey)
+        const creatorBalAfter = await umi.rpc.getBalance(user.publicKey)
 
         assert.equal(
           tokenBalAfter - tokenBalBefore,
@@ -830,10 +850,484 @@ describe("crow", () => {
         )
 
         assert.equal(
-          balAfter.basisPoints - balBefore.basisPoints,
-          accLamports.basisPoints + tokenLamports.basisPoints,
+          creatorBalAfter.basisPoints - creatorBalBefore.basisPoints,
+          accLamports.basisPoints,
           "Expected only the balance of the asset account to be sent to the creator"
         )
+
+        assert.equal(
+          feesWalletAfter.basisPoints - feesWalletBefore.basisPoints,
+          tokenLamports.basisPoints,
+          "Expected the fees wallet to receive the token acc rent"
+        )
+
+        assert.equal(
+          claimerBalBefore.basisPoints - claimerBalAfter.basisPoints,
+          TX_FEE,
+          "Expected claimer to pay for tx fee, no claim fee, token account already exists"
+        )
+      })
+    })
+
+    describe("Linear vesting", () => {
+      it("Cannot be used with NFT", async () => {
+        const asset = umi.eddsa.generateKeypair()
+        const escrowNft = await createNft(umi, false, undefined, user.publicKey)
+        await expectFail(
+          () =>
+            userProgram.methods
+              .transferIn({ nft: {} }, null, null, new BN(Date.now() / 1000 + 20), { linear: {} })
+              .accounts({
+                crow,
+                programConfig: findProgramConfigPda(),
+                feesWallet: FEES_WALLET,
+                feeWaiver: null,
+                asset: asset.publicKey,
+                tokenMint: escrowNft.publicKey,
+                tokenAccount: getTokenAccount(escrowNft.publicKey, user.publicKey),
+                destinationToken: getTokenAccount(escrowNft.publicKey, crow),
+                escrowNftMetadata: escrowNft.metadata.publicKey,
+                escrowNftEdition: escrowNft.edition.publicKey,
+                nftMetadata: nft.metadata.publicKey,
+                nftMint: nft.publicKey,
+                ownerTokenRecord: null,
+                destinationTokenRecord: null,
+                metadataProgram: MPL_TOKEN_METADATA_PROGRAM_ID,
+                sysvarInstructions: anchor.web3.SYSVAR_INSTRUCTIONS_PUBKEY,
+                authRules: null,
+                authRulesProgram: null,
+              })
+              .signers([toWeb3JsKeypair(asset)])
+              .rpc(),
+          (err) => assertErrorCode(err, "InvalidVesting")
+        )
+      })
+
+      describe("Token", () => {
+        let tokenMint: PublicKey
+        const asset = umi.eddsa.generateKeypair()
+        let claimed = 0n
+
+        before(async () => {
+          tokenMint = await createToken(umi, tokenAmount(100, "token", 9).basisPoints, 9, undefined, user.publicKey)
+        })
+
+        it("Can set up a linear vesting token asset for 5 seconds", async () => {
+          await userProgram.methods
+            .transferIn(
+              { token: {} },
+              new BN(tokenAmount(100, null, 6).basisPoints.toString()),
+              null,
+              new BN(Date.now() / 1000 + 5),
+              { linear: {} }
+            )
+            .accounts({
+              crow,
+              programConfig: findProgramConfigPda(),
+              feesWallet: FEES_WALLET,
+              feeWaiver: null,
+              asset: asset.publicKey,
+              tokenMint,
+              tokenAccount: getTokenAccount(tokenMint, user.publicKey),
+              destinationToken: getTokenAccount(tokenMint, crow),
+              escrowNftMetadata: null,
+              escrowNftEdition: null,
+              nftMetadata: nft.metadata.publicKey,
+              nftMint: nft.publicKey,
+              ownerTokenRecord: null,
+              destinationTokenRecord: null,
+              metadataProgram: MPL_TOKEN_METADATA_PROGRAM_ID,
+              sysvarInstructions: anchor.web3.SYSVAR_INSTRUCTIONS_PUBKEY,
+              authRules: null,
+              authRulesProgram: null,
+            })
+            .signers([toWeb3JsKeypair(asset)])
+            .rpc()
+
+          const acc = await userProgram.account.asset.fetch(asset.publicKey)
+          assert.ok(acc.active, "Expected account to be active")
+        })
+
+        it("Can claim", async () => {
+          await sleep(1000)
+          const balBefore = await getTokenAmount(tokenMint, user2.publicKey)
+          await user2Program.methods
+            .transferOut()
+            .accounts({
+              crow,
+              programConfig: findProgramConfigPda(),
+              feesWallet: FEES_WALLET,
+              feeWaiver: null,
+              asset: asset.publicKey,
+              tokenMint,
+              nftMint: nft.publicKey,
+              nftMetadata: nft.metadata.publicKey,
+              nftTokenRecord: getTokenRecordPda(nft.publicKey, user2.publicKey),
+              nftToken: getTokenAccount(nft.publicKey, user2.publicKey),
+              escrowNftEdition: null,
+              escrowNftMetadata: null,
+              tokenAccount: getTokenAccount(tokenMint, crow),
+              destinationToken: getTokenAccount(tokenMint, user2.publicKey),
+              ownerTokenRecord: null,
+              destinationTokenRecord: null,
+              metadataProgram: MPL_TOKEN_METADATA_PROGRAM_ID,
+              sysvarInstructions: anchor.web3.SYSVAR_INSTRUCTIONS_PUBKEY,
+              authRules: null,
+              authRulesProgram: null,
+              authority: user.publicKey,
+              recipient: user2.publicKey,
+            })
+            .rpc()
+
+          const balAfter = await getTokenAmount(tokenMint, user2.publicKey)
+          const assetAcc = await userProgram.account.asset.fetch(asset.publicKey)
+
+          claimed += balAfter - balBefore
+
+          assert.ok(balAfter > balBefore, "Expected balance to have increased")
+          assert.equal(
+            balAfter - balBefore,
+            BigInt(assetAcc.claimed.toString()),
+            "Expected claimed amount to be updated"
+          )
+        })
+
+        it("Can claim again", async () => {
+          await sleep(2000)
+          const balBefore = await getTokenAmount(tokenMint, user2.publicKey)
+
+          await user2Program.methods
+            .transferOut()
+            .accounts({
+              crow,
+              programConfig: findProgramConfigPda(),
+              feesWallet: FEES_WALLET,
+              feeWaiver: null,
+              asset: asset.publicKey,
+              tokenMint,
+              nftMint: nft.publicKey,
+              nftMetadata: nft.metadata.publicKey,
+              nftTokenRecord: getTokenRecordPda(nft.publicKey, user2.publicKey),
+              nftToken: getTokenAccount(nft.publicKey, user2.publicKey),
+              escrowNftEdition: null,
+              escrowNftMetadata: null,
+              tokenAccount: getTokenAccount(tokenMint, crow),
+              destinationToken: getTokenAccount(tokenMint, user2.publicKey),
+              ownerTokenRecord: null,
+              destinationTokenRecord: null,
+              metadataProgram: MPL_TOKEN_METADATA_PROGRAM_ID,
+              sysvarInstructions: anchor.web3.SYSVAR_INSTRUCTIONS_PUBKEY,
+              authRules: null,
+              authRulesProgram: null,
+              authority: user.publicKey,
+              recipient: user2.publicKey,
+            })
+            .rpc()
+
+          const balAfter = await getTokenAmount(tokenMint, user2.publicKey)
+          const assetAcc = await userProgram.account.asset.fetch(asset.publicKey)
+
+          claimed += balAfter - balBefore
+
+          assert.ok(balAfter > balBefore, "Expected balance to have increased")
+          assert.equal(claimed, BigInt(assetAcc.claimed.toString()), "Expected claimed amount to be updated")
+        })
+
+        it("Can claim again, closing asset", async () => {
+          await sleep(3000)
+          const balBefore = await getTokenAmount(tokenMint, user2.publicKey)
+          await user2Program.methods
+            .transferOut()
+            .accounts({
+              crow,
+              programConfig: findProgramConfigPda(),
+              feesWallet: FEES_WALLET,
+              feeWaiver: null,
+              asset: asset.publicKey,
+              tokenMint,
+              nftMint: nft.publicKey,
+              nftMetadata: nft.metadata.publicKey,
+              nftTokenRecord: getTokenRecordPda(nft.publicKey, user2.publicKey),
+              nftToken: getTokenAccount(nft.publicKey, user2.publicKey),
+              escrowNftEdition: null,
+              escrowNftMetadata: null,
+              tokenAccount: getTokenAccount(tokenMint, crow),
+              destinationToken: getTokenAccount(tokenMint, user2.publicKey),
+              ownerTokenRecord: null,
+              destinationTokenRecord: null,
+              metadataProgram: MPL_TOKEN_METADATA_PROGRAM_ID,
+              sysvarInstructions: anchor.web3.SYSVAR_INSTRUCTIONS_PUBKEY,
+              authRules: null,
+              authRulesProgram: null,
+              authority: user.publicKey,
+              recipient: user2.publicKey,
+            })
+            .rpc()
+
+          const balAfter = await getTokenAmount(tokenMint, user2.publicKey)
+          const exists = await umi.rpc.accountExists(asset.publicKey)
+
+          assert.ok(!exists, "Expected account to no longer exist")
+
+          assert.ok(balAfter > balBefore, "Expected balance to have increased")
+        })
+      })
+    })
+
+    describe("Interval vesting", () => {
+      it("Cannot be used with NFT", async () => {
+        const asset = umi.eddsa.generateKeypair()
+        const escrowNft = await createNft(umi, false, undefined, user.publicKey)
+        await expectFail(
+          () =>
+            userProgram.methods
+              .transferIn({ nft: {} }, null, null, new BN(Date.now() / 1000 + 20), { linear: {} })
+              .accounts({
+                crow,
+                programConfig: findProgramConfigPda(),
+                feesWallet: FEES_WALLET,
+                feeWaiver: null,
+                asset: asset.publicKey,
+                tokenMint: escrowNft.publicKey,
+                tokenAccount: getTokenAccount(escrowNft.publicKey, user.publicKey),
+                destinationToken: getTokenAccount(escrowNft.publicKey, crow),
+                escrowNftMetadata: escrowNft.metadata.publicKey,
+                escrowNftEdition: escrowNft.edition.publicKey,
+                nftMetadata: nft.metadata.publicKey,
+                nftMint: nft.publicKey,
+                ownerTokenRecord: null,
+                destinationTokenRecord: null,
+                metadataProgram: MPL_TOKEN_METADATA_PROGRAM_ID,
+                sysvarInstructions: anchor.web3.SYSVAR_INSTRUCTIONS_PUBKEY,
+                authRules: null,
+                authRulesProgram: null,
+              })
+              .signers([toWeb3JsKeypair(asset)])
+              .rpc(),
+          (err) => assertErrorCode(err, "InvalidVesting")
+        )
+      })
+
+      describe("SOL", () => {
+        const asset = umi.eddsa.generateKeypair()
+        let claimed = 0n
+
+        it("cannot set up with 1 interval", async () => {
+          await expectFail(
+            () =>
+              userProgram.methods
+                .transferIn({ sol: {} }, new BN(sol(10).basisPoints.toString()), null, new BN(Date.now() / 1000 + 10), {
+                  intervals: {
+                    numIntervals: 1,
+                  },
+                })
+                .accounts({
+                  crow,
+                  programConfig: findProgramConfigPda(),
+                  feesWallet: FEES_WALLET,
+                  feeWaiver: null,
+                  asset: asset.publicKey,
+                  tokenMint: null,
+                  tokenAccount: null,
+                  destinationToken: null,
+                  escrowNftMetadata: null,
+                  escrowNftEdition: null,
+                  nftMetadata: nft.metadata.publicKey,
+                  nftMint: nft.publicKey,
+                  ownerTokenRecord: null,
+                  destinationTokenRecord: null,
+                  metadataProgram: MPL_TOKEN_METADATA_PROGRAM_ID,
+                  sysvarInstructions: anchor.web3.SYSVAR_INSTRUCTIONS_PUBKEY,
+                  authRules: null,
+                  authRulesProgram: null,
+                })
+                .signers([toWeb3JsKeypair(asset)])
+                .rpc(),
+            (err) => assertErrorCode(err, "NotEnoughIntervals")
+          )
+        })
+
+        it("Can set up a interval vesting token asset for 2 intervals over 6 seconds", async () => {
+          await userProgram.methods
+            .transferIn({ sol: {} }, new BN(sol(10).basisPoints.toString()), null, new BN(Date.now() / 1000 + 6), {
+              intervals: {
+                numIntervals: 2,
+              },
+            })
+            .accounts({
+              crow,
+              programConfig: findProgramConfigPda(),
+              feesWallet: FEES_WALLET,
+              feeWaiver: null,
+              asset: asset.publicKey,
+              tokenMint: null,
+              tokenAccount: null,
+              destinationToken: null,
+              escrowNftMetadata: null,
+              escrowNftEdition: null,
+              nftMetadata: nft.metadata.publicKey,
+              nftMint: nft.publicKey,
+              ownerTokenRecord: null,
+              destinationTokenRecord: null,
+              metadataProgram: MPL_TOKEN_METADATA_PROGRAM_ID,
+              sysvarInstructions: anchor.web3.SYSVAR_INSTRUCTIONS_PUBKEY,
+              authRules: null,
+              authRulesProgram: null,
+            })
+            .signers([toWeb3JsKeypair(asset)])
+            .rpc()
+        })
+
+        it("Cannot claim ", async () => {
+          await expectFail(
+            () =>
+              user2Program.methods
+                .transferOut()
+                .accounts({
+                  crow,
+                  programConfig: findProgramConfigPda(),
+                  feesWallet: FEES_WALLET,
+                  feeWaiver: null,
+                  asset: asset.publicKey,
+                  tokenMint: null,
+                  nftMint: nft.publicKey,
+                  nftMetadata: nft.metadata.publicKey,
+                  nftTokenRecord: getTokenRecordPda(nft.publicKey, user2.publicKey),
+                  nftToken: getTokenAccount(nft.publicKey, user2.publicKey),
+                  escrowNftEdition: null,
+                  escrowNftMetadata: null,
+                  tokenAccount: null,
+                  destinationToken: null,
+                  ownerTokenRecord: null,
+                  destinationTokenRecord: null,
+                  metadataProgram: MPL_TOKEN_METADATA_PROGRAM_ID,
+                  sysvarInstructions: anchor.web3.SYSVAR_INSTRUCTIONS_PUBKEY,
+                  authRules: null,
+                  authRulesProgram: null,
+                  authority: user.publicKey,
+                  recipient: user2.publicKey,
+                })
+                .rpc(),
+            (err) => assertErrorCode(err, "NothingToClaim")
+          )
+        })
+
+        it("Can wait 3 seconds and claim half", async () => {
+          await sleep(3000)
+          const balBefore = await umi.rpc.getBalance(user2.publicKey)
+          await user2Program.methods
+            .transferOut()
+            .accounts({
+              crow,
+              programConfig: findProgramConfigPda(),
+              feesWallet: FEES_WALLET,
+              feeWaiver: null,
+              asset: asset.publicKey,
+              tokenMint: null,
+              nftMint: nft.publicKey,
+              nftMetadata: nft.metadata.publicKey,
+              nftTokenRecord: getTokenRecordPda(nft.publicKey, user2.publicKey),
+              nftToken: getTokenAccount(nft.publicKey, user2.publicKey),
+              escrowNftEdition: null,
+              escrowNftMetadata: null,
+              tokenAccount: null,
+              destinationToken: null,
+              ownerTokenRecord: null,
+              destinationTokenRecord: null,
+              metadataProgram: MPL_TOKEN_METADATA_PROGRAM_ID,
+              sysvarInstructions: anchor.web3.SYSVAR_INSTRUCTIONS_PUBKEY,
+              authRules: null,
+              authRulesProgram: null,
+              authority: user.publicKey,
+              recipient: user2.publicKey,
+            })
+            .rpc()
+
+          const balAfter = await umi.rpc.getBalance(user2.publicKey)
+          assert.equal(
+            balAfter.basisPoints - balBefore.basisPoints,
+            sol(5).basisPoints - TX_FEE - CLAIM_FEE,
+            "Expected to have claimed half the available amount"
+          )
+        })
+
+        it("Cannot claim again after 1s", async () => {
+          await sleep(1000)
+          await expectFail(
+            () =>
+              user2Program.methods
+                .transferOut()
+                .accounts({
+                  crow,
+                  programConfig: findProgramConfigPda(),
+                  feesWallet: FEES_WALLET,
+                  feeWaiver: null,
+                  asset: asset.publicKey,
+                  tokenMint: null,
+                  nftMint: nft.publicKey,
+                  nftMetadata: nft.metadata.publicKey,
+                  nftTokenRecord: getTokenRecordPda(nft.publicKey, user2.publicKey),
+                  nftToken: getTokenAccount(nft.publicKey, user2.publicKey),
+                  escrowNftEdition: null,
+                  escrowNftMetadata: null,
+                  tokenAccount: null,
+                  destinationToken: null,
+                  ownerTokenRecord: null,
+                  destinationTokenRecord: null,
+                  metadataProgram: MPL_TOKEN_METADATA_PROGRAM_ID,
+                  sysvarInstructions: anchor.web3.SYSVAR_INSTRUCTIONS_PUBKEY,
+                  authRules: null,
+                  authRulesProgram: null,
+                  authority: user.publicKey,
+                  recipient: user2.publicKey,
+                })
+                .rpc(),
+            (err) => assertErrorCode(err, "NothingToClaim")
+          )
+        })
+
+        it("Can wait and claim the remainder", async () => {
+          await sleep(3000)
+          const balBefore = await umi.rpc.getBalance(user2.publicKey)
+          await user2Program.methods
+            .transferOut()
+            .accounts({
+              crow,
+              programConfig: findProgramConfigPda(),
+              feesWallet: FEES_WALLET,
+              feeWaiver: null,
+              asset: asset.publicKey,
+              tokenMint: null,
+              nftMint: nft.publicKey,
+              nftMetadata: nft.metadata.publicKey,
+              nftTokenRecord: getTokenRecordPda(nft.publicKey, user2.publicKey),
+              nftToken: getTokenAccount(nft.publicKey, user2.publicKey),
+              escrowNftEdition: null,
+              escrowNftMetadata: null,
+              tokenAccount: null,
+              destinationToken: null,
+              ownerTokenRecord: null,
+              destinationTokenRecord: null,
+              metadataProgram: MPL_TOKEN_METADATA_PROGRAM_ID,
+              sysvarInstructions: anchor.web3.SYSVAR_INSTRUCTIONS_PUBKEY,
+              authRules: null,
+              authRulesProgram: null,
+              authority: user.publicKey,
+              recipient: user2.publicKey,
+            })
+            .rpc()
+
+          const balAfter = await umi.rpc.getBalance(user2.publicKey)
+          const exists = await umi.rpc.accountExists(asset.publicKey)
+
+          assert.ok(!exists, "Expected account to be closed")
+
+          assert.equal(
+            balAfter.basisPoints - balBefore.basisPoints,
+            sol(5).basisPoints - TX_FEE - CLAIM_FEE,
+            "Expected to have claimed half the available amount"
+          )
+        })
       })
     })
   })
