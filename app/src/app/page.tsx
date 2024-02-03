@@ -8,6 +8,7 @@ import {
   CircularProgress,
   Dialog,
   Grid,
+  IconButton,
   Stack,
   TextField,
   Typography,
@@ -34,8 +35,7 @@ import { dayjs } from "./helpers/dayjs"
 import { DAS } from "helius-sdk"
 import { getDigitalAsset } from "./helpers/helius"
 import { orderBy } from "lodash"
-import { ADMIN_WALLET } from "./constants"
-import { Admin } from "./components/Admin"
+import { Close } from "@mui/icons-material"
 
 export default function Home() {
   const { digitalAssetsWithCrows, fetching } = useDigitalAssets()
@@ -84,7 +84,6 @@ export default function Home() {
 
   return (
     <Box>
-      {wallet.publicKey.toBase58() === ADMIN_WALLET && <Admin />}
       <Grid container>
         {crows.map((crow, i) => (
           <Grid item xs={2} key={i}>
@@ -140,7 +139,6 @@ function Crow({ crow }: { crow: DigitalAssetWithCrow }) {
     getAssets()
     const listener1 = program.addEventListener("TransferInEvent", getAssets)
     const listener2 = program.addEventListener("TransferOutEvent", ({ asset }) => {
-      console.log("OK GOT IT", asset)
       if (assets.find((a) => a.publicKey.toBase58() === asset.toBase58())) {
         setAssets((assets) => assets.filter((a) => a.publicKey.toBase58() !== asset.toBase58()))
       }
@@ -199,20 +197,30 @@ function Crow({ crow }: { crow: DigitalAssetWithCrow }) {
       </CardContent>
       <Dialog open={assetsShowing} onClose={toggleAssets} fullWidth maxWidth="md">
         <Card sx={{ height: "80vh" }}>
-          <CardContent>
-            <Stack spacing={2}>
+          <CardContent sx={{ height: "100%", position: "relative" }}>
+            <IconButton sx={{ position: "absolute", top: 10, right: 10 }} size="large" onClick={toggleAssets}>
+              <Close fontSize="large" />
+            </IconButton>
+            <Stack spacing={2} height="100%">
               <Typography textAlign="center" textTransform="uppercase" color="primary" variant="h4" fontWeight={700}>
                 NFT contents
               </Typography>
-              <Box>
-                <Grid container spacing={2}>
-                  {assets.map((asset, i) => (
-                    <Grid item xs={3} key={i}>
-                      <Asset asset={asset} />
-                    </Grid>
-                  ))}
-                </Grid>
-              </Box>
+
+              {assets.length ? (
+                <Box>
+                  <Grid container spacing={2}>
+                    {assets.map((asset, i) => (
+                      <Grid item xs={3} key={i}>
+                        <Asset asset={asset} assetRemoved={(pk: anchor.web3.PublicKey) => getAssets()} />
+                      </Grid>
+                    ))}
+                  </Grid>
+                </Box>
+              ) : (
+                <Center>
+                  <Typography fontWeight="bold">Crow account empty</Typography>
+                </Center>
+              )}
             </Stack>
           </CardContent>
         </Card>
@@ -233,13 +241,15 @@ export type TokenWithTokenInfo = DAS.GetAssetResponse & {
   }
 }
 
-function Asset({ asset }: { asset: AssetWithPublicKey }) {
+function Asset({ asset: originalAsset, assetRemoved }: { asset: AssetWithPublicKey; assetRemoved: Function }) {
+  const [asset, setAsset] = useState<AssetWithPublicKey>(originalAsset)
   const [loading, setLoading] = useState(false)
   const { feeLevel } = usePriorityFees()
   const [canClaim, setCanClaim] = useState(true)
   const [nft, setNft] = useState<DAS.GetAssetResponse | null>(null)
   const [token, setToken] = useState<TokenWithTokenInfo | null>(null)
   const [amountToClaim, setAmountToClaim] = useState(0)
+  const program = useAnchor()
   const umi = useUmi()
 
   useEffect(() => {
@@ -252,6 +262,29 @@ function Asset({ asset }: { asset: AssetWithPublicKey }) {
         setToken(token)
       }
     })()
+  }, [asset])
+
+  async function fetchAsset() {
+    try {
+      const newAsset = await program.account.asset.fetch(asset.publicKey)
+      setAsset({
+        publicKey: asset.publicKey,
+        account: newAsset,
+      })
+    } catch {
+      assetRemoved(asset.publicKey)
+    }
+  }
+
+  useEffect(() => {
+    if (!asset) {
+      return
+    }
+
+    const id = program.provider.connection.onAccountChange(asset.publicKey, fetchAsset)
+    return () => {
+      program.provider.connection.removeAccountChangeListener(id)
+    }
   }, [asset])
 
   useEffect(() => {

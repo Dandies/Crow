@@ -1,3 +1,4 @@
+"use client"
 import * as anchor from "@coral-xyz/anchor"
 import { Button, Card, CardContent, Container, Stack, TextField } from "@mui/material"
 import { useWallet } from "@solana/wallet-adapter-react"
@@ -8,8 +9,9 @@ import { useAnchor } from "../context/anchor"
 import { findProgramConfigPda, findProgramDataAddress } from "../helpers/pdas"
 import { toWeb3JsPublicKey } from "@metaplex-foundation/umi-web3js-adapters"
 import toast from "react-hot-toast"
+import { notFound } from "next/navigation"
 
-export function Admin() {
+export default function Admin() {
   const [loading, setLoading] = useState(false)
   const program = useAnchor()
   const wallet = useWallet()
@@ -34,7 +36,7 @@ export function Admin() {
   }, [])
 
   if (wallet.publicKey?.toBase58() !== ADMIN_WALLET) {
-    return null
+    return notFound()
   }
 
   function reset() {
