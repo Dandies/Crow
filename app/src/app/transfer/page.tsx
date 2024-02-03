@@ -181,10 +181,27 @@ export default function Create() {
         const da = await getDigitalAsset(pk)
         const tokenStandard = (da.content?.metadata as any).token_standard
         if (!tokenStandard) {
-          throw new Error("Token standard missing")
-        }
-        if (!["ProgrammableNonFungible", "NonFungible"].includes(tokenStandard)) {
-          throw new Error("Only non-fungible tokens can be used")
+          const da = await fetchDigitalAsset(umi, pk)
+          const tokenStandard = unwrapOptionRecursively(da.metadata.tokenStandard)
+          if (!tokenStandard) {
+            const isNonFungible = da.mint.decimals === 0 && da.mint.supply === 1n
+            if (!isNonFungible) {
+              throw new Error("Only non-fungible assets can be used")
+            }
+          } else if (
+            ![
+              TokenStandard.NonFungible,
+              TokenStandard.NonFungibleEdition,
+              TokenStandard.ProgrammableNonFungible,
+              TokenStandard.ProgrammableNonFungibleEdition,
+            ].includes(tokenStandard)
+          ) {
+            throw new Error("Invalid token standard")
+          }
+        } else {
+          if (!["ProgrammableNonFungible", "NonFungible"].includes(tokenStandard)) {
+            throw new Error("Only non-fungible tokens can be used")
+          }
         }
         setDa(da)
       } catch (err: any) {
@@ -356,7 +373,7 @@ export default function Create() {
               <Stack spacing={2} justifyContent="space-between" height="100%">
                 <Stack spacing={2}>
                   <Typography variant="h5" fontWeight="bold" textTransform="uppercase">
-                    Source
+                    Put this 👉
                   </Typography>
                   <ToggleButtonGroup
                     value={type}
@@ -624,7 +641,7 @@ export default function Create() {
             <CardContent sx={{ height: "100%", overflow: "auto" }}>
               <Stack spacing={2}>
                 <Typography variant="h5" fontWeight="bold" textTransform="uppercase">
-                  Destination
+                  👌 In this
                 </Typography>
                 <TextField
                   label="NFT Mint"
@@ -761,6 +778,7 @@ function TokenSelector({ onSelect }: { onSelect: Function }) {
     }
     ;(async () => {
       const tokens = (await getAllFungiblesByOwner(umi.identity.publicKey)) as TokenWithTokenInfo[]
+      console.log(tokens)
       setTokens(orderBy(tokens, (token) => token.token_info?.price_info?.total_price || 0, "desc"))
     })()
   }, [wallet.publicKey])
@@ -795,7 +813,8 @@ function TokenSelector({ onSelect }: { onSelect: Function }) {
               onClick={() => onSelect(token.id)}
             >
               <TableCell>
-                {token.content?.metadata.name || "Unnamed token"} ({token.content?.metadata.symbol})
+                {token.content?.metadata.name || "Unnamed token"} (
+                {token.content?.metadata.symbol || token.token_info?.symbol})
               </TableCell>
               <TableCell>
                 {(token.token_info.balance / Math.pow(10, token.token_info.decimals || 0)).toLocaleString()}

@@ -6,6 +6,7 @@ export const SHARE_RECORD_SIZE = 8 + 32 + 32 + 8 + 1
 export const NFT_SHARE_RECORD_SIZE = 8 + 32 + 32 + 32 + 1
 export const FEES_WALLET = publicKey(process.env.NEXT_PUBLIC_FEES_WALLET!)
 export const FEE_WAIVER = publicKey(process.env.NEXT_PUBLIC_FEE_WAIVER!)
+export const ADMIN_WALLET = publicKey(process.env.NEXT_PUBLIC_ADMIN_WALLET!)
 
 export const FEES = {
   claim: {

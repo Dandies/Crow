@@ -313,7 +313,7 @@ pub fn transfer_out_handler(ctx: Context<TransferOut>, fee: Option<u64>) -> Resu
         }
         Vesting::Intervals { num_intervals } => {
             let num_intervals = num_intervals as i64;
-            let total_time = asset.end_time.expect("End time expected") - asset.start_time;
+            let total_time: i64 = asset.end_time.expect("End time expected") - asset.start_time;
             let time_spent = current_time - asset.start_time;
 
             let time_per_interval = total_time / num_intervals;
@@ -326,9 +326,13 @@ pub fn transfer_out_handler(ctx: Context<TransferOut>, fee: Option<u64>) -> Resu
         _ => asset.balance,
     };
 
+    let amount_to_claim = u64::min(amount_to_claim, ctx.accounts.asset.balance);
+
     require_gt!(amount_to_claim, 0, CrowError::NothingToClaim);
 
-    let new_balance = asset
+    msg!("amount_to_claim: {}", amount_to_claim);
+
+    let new_balance: u64 = asset
         .balance
         .checked_sub(amount_to_claim)
         .ok_or(CrowError::ProgramSubError)?;

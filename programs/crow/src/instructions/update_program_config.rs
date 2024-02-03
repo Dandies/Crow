@@ -5,9 +5,6 @@ use crate::{program::Crow, state::ProgramConfig, CrowError};
 #[derive(Accounts)]
 pub struct UpdateProgramConfig<'info> {
     #[account(
-        init,
-        space = ProgramConfig::LEN,
-        payer = authority,
         seeds = [b"program-config"],
         bump
     )]

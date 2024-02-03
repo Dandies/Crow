@@ -228,7 +228,7 @@ pub fn transfer_in_handler(
             )?;
         }
     } else {
-        require!(fee.is_some(), CrowError::FeeWaiverNotProvided);
+        require!(fee.is_none(), CrowError::FeeWaiverNotProvided);
 
         let tx_fee = ctx.accounts.program_config.distribute_fee;
 

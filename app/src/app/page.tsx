@@ -1,6 +1,17 @@
 "use client"
 import * as anchor from "@coral-xyz/anchor"
-import { Box, Button, Card, CardContent, CircularProgress, Dialog, Grid, Stack, Typography } from "@mui/material"
+import {
+  Box,
+  Button,
+  Card,
+  CardContent,
+  CircularProgress,
+  Dialog,
+  Grid,
+  Stack,
+  TextField,
+  Typography,
+} from "@mui/material"
 import { useAnchor } from "./context/anchor"
 import { Dispatch, SetStateAction, useEffect, useRef, useState } from "react"
 import { useWallet } from "@solana/wallet-adapter-react"
@@ -9,30 +20,13 @@ import Link from "next/link"
 import { DigitalAssetWithCrow, useDigitalAssets } from "./context/digital-assets"
 import CrowLogo from "@/../public/crow.png"
 import Image from "next/image"
-import { findCrowPda, findProgramConfigPda, getTokenAccount, getTokenRecordPda } from "./helpers/pdas"
-import {
-  PublicKey,
-  createNoopSigner,
-  publicKey,
-  transactionBuilder,
-  unwrapOption,
-  unwrapOptionRecursively,
-} from "@metaplex-foundation/umi"
+import { findCrowPda } from "./helpers/pdas"
+import { publicKey } from "@metaplex-foundation/umi"
 import { AssetWithPublicKey } from "./types/types"
-import { FEES_WALLET, FEE_WAIVER } from "./constants"
-import {
-  MPL_TOKEN_METADATA_PROGRAM_ID,
-  TokenStandard,
-  fetchDigitalAsset,
-  findMasterEditionPda,
-  findMetadataPda,
-} from "@metaplex-foundation/mpl-token-metadata"
-import { fromWeb3JsInstruction, fromWeb3JsPublicKey } from "@metaplex-foundation/umi-web3js-adapters"
+import { fromWeb3JsPublicKey } from "@metaplex-foundation/umi-web3js-adapters"
 import { useUmi } from "./context/umi"
 import toast from "react-hot-toast"
-import { MPL_TOKEN_AUTH_RULES_PROGRAM_ID } from "@metaplex-foundation/mpl-token-auth-rules"
-import axios from "axios"
-import base58 from "bs58"
+
 import { getClaimTx } from "./helpers/transactions"
 import { bs58 } from "@coral-xyz/anchor/dist/cjs/utils/bytes"
 import { usePriorityFees } from "./context/priority-fees"
@@ -40,6 +34,8 @@ import { dayjs } from "./helpers/dayjs"
 import { DAS } from "helius-sdk"
 import { getDigitalAsset } from "./helpers/helius"
 import { orderBy } from "lodash"
+import { ADMIN_WALLET } from "./constants"
+import { Admin } from "./components/Admin"
 
 export default function Home() {
   const { digitalAssetsWithCrows, fetching } = useDigitalAssets()
@@ -87,13 +83,16 @@ export default function Home() {
   }
 
   return (
-    <Grid container>
-      {crows.map((crow, i) => (
-        <Grid item xs={2} key={i}>
-          <Crow crow={crow} />
-        </Grid>
-      ))}
-    </Grid>
+    <Box>
+      {wallet.publicKey.toBase58() === ADMIN_WALLET && <Admin />}
+      <Grid container>
+        {crows.map((crow, i) => (
+          <Grid item xs={2} key={i}>
+            <Crow crow={crow} />
+          </Grid>
+        ))}
+      </Grid>
+    </Box>
   )
 }
 
@@ -226,6 +225,7 @@ export type TokenWithTokenInfo = DAS.GetAssetResponse & {
   token_info: {
     balance: number
     decimals: number
+    symbol: string
     price_info: {
       total_price: number
       price_per_token: number
@@ -265,6 +265,7 @@ function Asset({ asset }: { asset: AssetWithPublicKey }) {
       const currentTime = Date.now() / 1000
       const amount = asset.account.amount.toNumber()
       const claimed = asset.account.claimed.toNumber()
+      const balance = asset.account.balance.toNumber()
 
       if (asset.account.vesting.linear) {
         const totalTime = endTime - startTime
@@ -275,7 +276,9 @@ function Asset({ asset }: { asset: AssetWithPublicKey }) {
 
         const claimableBalance = (amount * ratio) / 100
 
-        setAmountToClaim(claimableBalance - claimed)
+        const amountToClaim = Math.min(claimableBalance - claimed, balance)
+
+        setAmountToClaim(amountToClaim)
       } else if (asset.account.vesting.intervals) {
         const numIntervals = asset.account.vesting.intervals.numIntervals
         const totalTime = endTime - startTime
@@ -286,8 +289,8 @@ function Asset({ asset }: { asset: AssetWithPublicKey }) {
 
         const numIntervalsCompleted = Math.floor(timeSpent / timePerInterval)
         let claimableBalance = amountPerInterval * numIntervalsCompleted
-        console.log(claimableBalance)
-        setAmountToClaim(claimableBalance - claimed)
+        const amountToClaim = Math.min(claimableBalance - claimed, balance)
+        setAmountToClaim(amountToClaim)
       }
     }
 
@@ -366,7 +369,7 @@ function Asset({ asset }: { asset: AssetWithPublicKey }) {
               </Typography>
             )}
             {(asset.account.vesting.linear || asset.account.vesting.intervals) && (
-              <Typography>Can claim: {(amountToClaim / factor).toLocaleString()}</Typography>
+              <Typography>Can claim: {((amountToClaim > 0 ? amountToClaim : 0) / factor).toLocaleString()}</Typography>
             )}
           </Stack>
         )}

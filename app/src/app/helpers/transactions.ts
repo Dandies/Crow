@@ -208,6 +208,8 @@ export async function getDistributeTx({
     ? createSignerFromKeypair(umi, umi.eddsa.createKeypairFromSecretKey(base58.decode(process.env.FEE_WAIVER!)))
     : null
 
+  console.log({ customFee })
+
   const signers = [umi.identity]
 
   if (feeWaiver) {

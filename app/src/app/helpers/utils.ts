@@ -9,7 +9,7 @@ export function shorten(address: string) {
   return `${address.substring(0, 4)}...${address.substring(address.length - 4, address.length)}`
 }
 
-function getLevel(dandies: number) {
+export function getLevel(dandies: number) {
   if (dandies >= 10) {
     return "free"
   }
@@ -36,4 +36,10 @@ export function getFee(type: string, dandies: number) {
   const fee: BigInt = get(FEES, `${type}.${level}`, 0n)
 
   return fee ? new BN(fee.toString()) : null
+}
+
+export function toTitleCase(str: string) {
+  return str.replace("-", " ").replace(/\w\S*/g, function (txt) {
+    return txt.charAt(0).toUpperCase() + txt.substr(1).toLowerCase()
+  })
 }
