@@ -122,5 +122,7 @@ export async function getPriorityFeesForTx(tx: string, feeLevel: PriorityFees) {
     ],
   })
 
+  console.log(data)
+
   return data?.result?.priorityFeeEstimate || 0
 }

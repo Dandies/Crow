@@ -30,12 +30,12 @@ export function getFee(type: string, dandies: number) {
   const level = getLevel(dandies)
 
   if (level === "free") {
-    return new BN(0)
+    return 0
   }
 
   const fee: BigInt = get(FEES, `${type}.${level}`, 0n)
 
-  return fee ? new BN(fee.toString()) : null
+  return fee || null
 }
 
 export function toTitleCase(str: string) {

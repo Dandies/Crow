@@ -5,6 +5,7 @@ import Image from "next/image"
 import dynamic from "next/dynamic"
 import Link from "next/link"
 import { Tabs } from "./Tabs"
+import { WalletButton } from "./WalletButton"
 
 // add this
 const WalletMultiButtonDynamic = dynamic(
@@ -29,7 +30,7 @@ export function AppBar() {
           </Box>
           <Stack direction="row" spacing={2}>
             <Tabs />
-            <WalletMultiButtonDynamic />
+            <WalletButton />
           </Stack>
         </Stack>
       </Container>

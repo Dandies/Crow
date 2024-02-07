@@ -407,6 +407,28 @@ function Asset({ asset: originalAsset, assetRemoved }: { asset: AssetWithPublicK
           </Stack>
         )}
 
+        {asset.account.assetType.sol && (
+          <Stack spacing={2}>
+            <Typography>{(asset.account.amount.toNumber() / factor).toLocaleString()} SOL</Typography>
+            <Typography>Claimed: {(asset.account.claimed.toNumber() / factor).toLocaleString()}</Typography>
+            {asset.account.vesting.linear && (
+              <Typography>
+                Linear vesting until{" "}
+                {dayjs((asset.account?.endTime?.toNumber() || 0) * 1000).format("DD/MM/YYYY HH:mm:ss")}
+              </Typography>
+            )}
+            {asset.account.vesting.intervals && (
+              <Typography>
+                Vesting over {asset.account.vesting.intervals.numIntervals} intervals until{" "}
+                {dayjs((asset.account?.endTime?.toNumber() || 0) * 1000).format("DD/MM/YYYY HH:mm:ss")}
+              </Typography>
+            )}
+            {(asset.account.vesting.linear || asset.account.vesting.intervals) && (
+              <Typography>Can claim: {((amountToClaim > 0 ? amountToClaim : 0) / factor).toLocaleString()}</Typography>
+            )}
+          </Stack>
+        )}
+
         {nft && (
           <Box
             display="flex"

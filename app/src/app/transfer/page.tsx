@@ -269,13 +269,16 @@ export default function Create() {
 
         const tx = umi.transactions.deserialize(base58.decode(serialized))
         const signed = await umi.identity.signTransaction(tx)
+        console.log(signed)
         const sig = await umi.rpc.sendTransaction(signed, { skipPreflight: true })
+        console.log(sig)
         const conf = await umi.rpc.confirmTransaction(sig, {
           strategy: {
             type: "blockhash",
             ...(await umi.rpc.getLatestBlockhash()),
           },
         })
+        console.log(conf)
 
         if (conf.value.err) {
           throw new Error("Error confirming tx")
@@ -305,7 +308,7 @@ export default function Create() {
   const factor = type === "token" && token ? 10n ** BigInt(token.mint.decimals) : 10n ** 9n
 
   function cancel() {
-    setType("nft")
+    setType("token")
     setToken(null)
     setTokenMint("")
     setAmount("0")

@@ -43,6 +43,9 @@ export async function getClaimTx(assetId: string, payerPk: string, feeLevel?: Pr
   const crowAccount = await program.account.crow.fetch(crow)
   const nftMint = fromWeb3JsPublicKey(crowAccount.nftMint)
 
+  const nftDa = await fetchDigitalAsset(umi, nftMint)
+  const isPnft = unwrapOptionRecursively(nftDa.metadata.tokenStandard) === TokenStandard.ProgrammableNonFungible
+
   const tokenMint = asset.assetType.token || asset.assetType.nft ? fromWeb3JsPublicKey(asset.tokenMint) : null
   const escrowNftEdition = asset.assetType.nft && tokenMint ? findMasterEditionPda(umi, { mint: tokenMint })[0] : null
 
@@ -78,10 +81,8 @@ export async function getClaimTx(assetId: string, payerPk: string, feeLevel?: Pr
     signers.push(feeWaiver)
   }
 
-  console.log(asset)
-
   const instruction = await program.methods
-    .transferOut(customFee)
+    .transferOut(customFee ? new BN(customFee.toString()) : null)
     .accounts({
       crow,
       programConfig: findProgramConfigPda(),
@@ -89,9 +90,9 @@ export async function getClaimTx(assetId: string, payerPk: string, feeLevel?: Pr
       feeWaiver: feeWaiver?.publicKey || null,
       asset: assetPk,
       tokenMint,
-      nftMint: nftMint,
+      nftMint,
       nftMetadata: findMetadataPda(umi, { mint: nftMint })[0],
-      nftTokenRecord: getTokenRecordPda(nftMint, umi.identity.publicKey),
+      nftTokenRecord: isPnft ? getTokenRecordPda(nftMint, umi.identity.publicKey) : null,
       nftToken: getTokenAccount(nftMint, umi.identity.publicKey),
       escrowNftEdition,
       escrowNftMetadata,
@@ -204,11 +205,10 @@ export async function getDistributeTx({
 
   const customFee = getFee("distribute", dandies.length)
 
-  const feeWaiver = customFee
-    ? createSignerFromKeypair(umi, umi.eddsa.createKeypairFromSecretKey(base58.decode(process.env.FEE_WAIVER!)))
-    : null
-
-  console.log({ customFee })
+  const feeWaiver =
+    customFee !== null
+      ? createSignerFromKeypair(umi, umi.eddsa.createKeypairFromSecretKey(base58.decode(process.env.FEE_WAIVER!)))
+      : null
 
   const signers = [umi.identity]
 
@@ -223,7 +223,7 @@ export async function getDistributeTx({
       startDate ? new BN(startDate) : null,
       endDate ? new BN(endDate) : null,
       vestingTypeEnum as any,
-      customFee
+      customFee ? new BN(customFee.toString()) : null
     )
     .accounts({
       programConfig: findProgramConfigPda(),
