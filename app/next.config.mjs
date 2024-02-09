@@ -2,6 +2,7 @@
 const nextConfig = {
   experimental: {
     esmExternals: "loose",
+    missingSuspenseWithCSRBailout: false,
   },
   webpack: (config) => {
     config.module.rules.push({
