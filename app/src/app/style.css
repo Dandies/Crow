@@ -9,3 +9,7 @@
 .wallet-adapter-button-start-icon {
   display: none;
 }
+
+.wallet-adapter-modal {
+  z-index: 1000000;
+}

@@ -32,12 +32,20 @@ import {
 } from "@metaplex-foundation/mpl-token-metadata"
 import { createNft } from "./helpers/create-nft"
 import { umi } from "./helpers/umi"
-import { assert } from "chai"
+import { assert, expect } from "chai"
 import { BN } from "bn.js"
 import { toWeb3JsKeypair } from "@metaplex-foundation/umi-web3js-adapters"
-import { FEES_WALLET, assertErrorCode, expectFail, getTokenAmount, sleep } from "./helpers/utils"
+import {
+  DANDIES_COLLECTION_SIGNER,
+  FEES_WALLET,
+  assertErrorCode,
+  expectFail,
+  getTokenAmount,
+  sleep,
+} from "./helpers/utils"
 import { createToken } from "./helpers/create-token"
-import { createAssociatedToken, fetchToken, safeFetchToken } from "@metaplex-foundation/mpl-toolbox"
+import { createAssociatedToken, safeFetchToken } from "@metaplex-foundation/mpl-toolbox"
+import { createCollection } from "./helpers/create-collection"
 
 const TX_FEE = 5000n
 const DISTRIBUTE_FEE = sol(0.001).basisPoints
@@ -48,11 +56,13 @@ describe("esCROW", () => {
   let user2: Keypair
   let userProgram: Program<Crow>
   let user2Program: Program<Crow>
+  let dandiesCollection: DigitalAsset
   before(async () => {
     user = await createNewUser()
     user2 = await createNewUser()
     userProgram = programPaidBy(user)
     user2Program = programPaidBy(user2)
+    dandiesCollection = await createCollection(umi, DANDIES_COLLECTION_SIGNER)
     await adminProgram.methods
       .initProgramConfig(new BN(CLAIM_FEE.toString()), new BN(DISTRIBUTE_FEE.toString()))
       .accounts({
@@ -77,7 +87,7 @@ describe("esCROW", () => {
       it("can fund the crow with SOL", async () => {
         const balBefore = await umi.rpc.getBalance(user.publicKey)
         const tx = await userProgram.methods
-          .transferIn({ sol: {} }, new BN(sol(1).basisPoints.toString()), null, null, { none: {} })
+          .transferIn({ sol: {} }, new BN(sol(1).basisPoints.toString()), null, null, { none: {} }, null)
           .accounts({
             crow,
             programConfig: findProgramConfigPda(),
@@ -130,7 +140,7 @@ describe("esCROW", () => {
         await expectFail(
           () =>
             userProgram.methods
-              .transferOut()
+              .transferOut(null)
               .accounts({
                 crow,
                 programConfig: findProgramConfigPda(),
@@ -140,7 +150,7 @@ describe("esCROW", () => {
                 tokenMint: null,
                 nftMint: nft.publicKey,
                 nftMetadata: nft.metadata.publicKey,
-                nftTokenRecord: getTokenRecordPda(nft.publicKey, user2.publicKey),
+                nftTokenRecord: getTokenRecordPda(nft.publicKey, user.publicKey),
                 nftToken: getTokenAccount(nft.publicKey, user.publicKey),
                 escrowNftEdition: null,
                 escrowNftMetadata: null,
@@ -156,7 +166,7 @@ describe("esCROW", () => {
                 recipient: user.publicKey,
               })
               .rpc(),
-          (err) => assertErrorCode(err, "Unauthorized")
+          (err) => assertErrorCode(err, "AccountNotInitialized")
         )
       })
 
@@ -185,7 +195,7 @@ describe("esCROW", () => {
         await expectFail(
           () =>
             user2Program.methods
-              .transferOut()
+              .transferOut(null)
               .accounts({
                 crow,
                 programConfig: findProgramConfigPda(),
@@ -240,7 +250,7 @@ describe("esCROW", () => {
 
         const balBefore = await umi.rpc.getBalance(user2.publicKey)
         await user2Program.methods
-          .transferOut()
+          .transferOut(null)
           .accounts({
             crow,
             programConfig: findProgramConfigPda(),
@@ -288,7 +298,8 @@ describe("esCROW", () => {
             new BN(tokenAmount(10, "token", 9).basisPoints.toString()),
             new BN(Date.now() / 1000 + 3),
             null,
-            { none: {} }
+            { none: {} },
+            null
           )
           .accounts({
             crow,
@@ -328,7 +339,7 @@ describe("esCROW", () => {
         await expectFail(
           () =>
             user2Program.methods
-              .transferOut()
+              .transferOut(null)
               .accounts({
                 crow,
                 programConfig: findProgramConfigPda(),
@@ -363,7 +374,7 @@ describe("esCROW", () => {
         const tokenBalBefore = (await safeFetchToken(umi, getTokenAccount(tokenMint, user2.publicKey)))?.amount || 0n
         const balBefore = await umi.rpc.getBalance(user2.publicKey)
         await user2Program.methods
-          .transferOut()
+          .transferOut(null)
           .accounts({
             crow,
             programConfig: findProgramConfigPda(),
@@ -424,7 +435,7 @@ describe("esCROW", () => {
 
       it("can add an NFT to a crow", async () => {
         await userProgram.methods
-          .transferIn({ nft: {} }, null, null, null, { none: {} })
+          .transferIn({ nft: {} }, null, null, null, { none: {} }, null)
           .accounts({
             crow,
             programConfig: findProgramConfigPda(),
@@ -476,7 +487,7 @@ describe("esCROW", () => {
         await expectFail(
           () =>
             user2Program.methods
-              .transferOut()
+              .transferOut(null)
               .accounts({
                 crow,
                 programConfig: findProgramConfigPda(),
@@ -486,7 +497,7 @@ describe("esCROW", () => {
                 tokenMint: escrowNft.publicKey,
                 nftMint: nft.publicKey,
                 nftMetadata: nft.metadata.publicKey,
-                nftTokenRecord: getTokenRecordPda(nft.publicKey, user3.publicKey),
+                nftTokenRecord: getTokenRecordPda(nft.publicKey, user2.publicKey),
                 nftToken: getTokenAccount(nft.publicKey, user2.publicKey),
                 escrowNftEdition: escrowNft.edition.publicKey,
                 escrowNftMetadata: escrowNft.metadata.publicKey,
@@ -502,7 +513,7 @@ describe("esCROW", () => {
                 recipient: user2.publicKey,
               })
               .rpc(),
-          (err) => assertErrorCode(err, "Unauthorized")
+          (err) => assertErrorCode(err, "AccountNotInitialized")
         )
       })
 
@@ -516,7 +527,7 @@ describe("esCROW", () => {
         const tokenLamports = token.exists && token.lamports
         const feesWalletBefore = await umi.rpc.getBalance(FEES_WALLET)
         await user3Program.methods
-          .transferOut()
+          .transferOut(null)
           .accounts({
             crow,
             programConfig: findProgramConfigPda(),
@@ -585,7 +596,7 @@ describe("esCROW", () => {
 
       it("Can send a pNFT to a Crow", async () => {
         await userProgram.methods
-          .transferIn({ nft: {} }, null, null, null, { none: {} })
+          .transferIn({ nft: {} }, null, null, null, { none: {} }, null)
           .accounts({
             crow,
             programConfig: findProgramConfigPda(),
@@ -620,7 +631,7 @@ describe("esCROW", () => {
         const token = await umi.rpc.getAccount(getTokenAccount(escrowNft.publicKey, crow))
         const tokenLamports = token.exists && token.lamports
         await user2Program.methods
-          .transferOut()
+          .transferOut(null)
           .accounts({
             crow,
             programConfig: findProgramConfigPda(),
@@ -673,9 +684,16 @@ describe("esCROW", () => {
       it("can fund once", async () => {
         const balBefore = await umi.rpc.getBalance(user.publicKey)
         await userProgram.methods
-          .transferIn({ token: {} }, new BN(tokenAmount(10, "token", 9).basisPoints.toString()), null, null, {
-            none: {},
-          })
+          .transferIn(
+            { token: {} },
+            new BN(tokenAmount(10, "token", 9).basisPoints.toString()),
+            null,
+            null,
+            {
+              none: {},
+            },
+            null
+          )
           .accounts({
             crow,
             programConfig: findProgramConfigPda(),
@@ -713,9 +731,16 @@ describe("esCROW", () => {
       it("can fund again, with fees waived", async () => {
         const balBefore = await umi.rpc.getBalance(user.publicKey)
         await userProgram.methods
-          .transferIn({ token: {} }, new BN(tokenAmount(15, "token", 9).basisPoints.toString()), null, null, {
-            none: {},
-          })
+          .transferIn(
+            { token: {} },
+            new BN(tokenAmount(15, "token", 9).basisPoints.toString()),
+            null,
+            null,
+            {
+              none: {},
+            },
+            null
+          )
           .accounts({
             crow,
             programConfig: findProgramConfigPda(),
@@ -754,7 +779,7 @@ describe("esCROW", () => {
         const accBal = await umi.rpc.getBalance(asset1.publicKey)
         const userBalBefore = await umi.rpc.getBalance(user2.publicKey)
         await user2Program.methods
-          .transferOut()
+          .transferOut(null)
           .accounts({
             crow,
             programConfig: findProgramConfigPda(),
@@ -812,7 +837,7 @@ describe("esCROW", () => {
         const feesWalletBefore = await umi.rpc.getBalance(FEES_WALLET)
         const claimerBalBefore = await umi.rpc.getBalance(user2.publicKey)
         await user2Program.methods
-          .transferOut()
+          .transferOut(null)
           .accounts({
             crow,
             programConfig: findProgramConfigPda(),
@@ -876,7 +901,7 @@ describe("esCROW", () => {
         await expectFail(
           () =>
             userProgram.methods
-              .transferIn({ nft: {} }, null, null, new BN(Date.now() / 1000 + 20), { linear: {} })
+              .transferIn({ nft: {} }, null, null, new BN(Date.now() / 1000 + 20), { linear: {} }, null)
               .accounts({
                 crow,
                 programConfig: findProgramConfigPda(),
@@ -919,7 +944,8 @@ describe("esCROW", () => {
               new BN(tokenAmount(100, null, 6).basisPoints.toString()),
               null,
               new BN(Date.now() / 1000 + 5),
-              { linear: {} }
+              { linear: {} },
+              null
             )
             .accounts({
               crow,
@@ -952,7 +978,7 @@ describe("esCROW", () => {
           await sleep(1000)
           const balBefore = await getTokenAmount(tokenMint, user2.publicKey)
           await user2Program.methods
-            .transferOut()
+            .transferOut(null)
             .accounts({
               crow,
               programConfig: findProgramConfigPda(),
@@ -997,7 +1023,7 @@ describe("esCROW", () => {
           const balBefore = await getTokenAmount(tokenMint, user2.publicKey)
 
           await user2Program.methods
-            .transferOut()
+            .transferOut(null)
             .accounts({
               crow,
               programConfig: findProgramConfigPda(),
@@ -1037,7 +1063,7 @@ describe("esCROW", () => {
           await sleep(3000)
           const balBefore = await getTokenAmount(tokenMint, user2.publicKey)
           await user2Program.methods
-            .transferOut()
+            .transferOut(null)
             .accounts({
               crow,
               programConfig: findProgramConfigPda(),
@@ -1081,7 +1107,7 @@ describe("esCROW", () => {
         await expectFail(
           () =>
             userProgram.methods
-              .transferIn({ nft: {} }, null, null, new BN(Date.now() / 1000 + 20), { linear: {} })
+              .transferIn({ nft: {} }, null, null, new BN(Date.now() / 1000 + 20), { linear: {} }, null)
               .accounts({
                 crow,
                 programConfig: findProgramConfigPda(),
@@ -1116,11 +1142,18 @@ describe("esCROW", () => {
           await expectFail(
             () =>
               userProgram.methods
-                .transferIn({ sol: {} }, new BN(sol(10).basisPoints.toString()), null, new BN(Date.now() / 1000 + 10), {
-                  intervals: {
-                    numIntervals: 1,
+                .transferIn(
+                  { sol: {} },
+                  new BN(sol(10).basisPoints.toString()),
+                  null,
+                  new BN(Date.now() / 1000 + 10),
+                  {
+                    intervals: {
+                      numIntervals: 1,
+                    },
                   },
-                })
+                  null
+                )
                 .accounts({
                   crow,
                   programConfig: findProgramConfigPda(),
@@ -1149,11 +1182,18 @@ describe("esCROW", () => {
 
         it("Can set up a interval vesting token asset for 2 intervals over 6 seconds", async () => {
           await userProgram.methods
-            .transferIn({ sol: {} }, new BN(sol(10).basisPoints.toString()), null, new BN(Date.now() / 1000 + 6), {
-              intervals: {
-                numIntervals: 2,
+            .transferIn(
+              { sol: {} },
+              new BN(sol(10).basisPoints.toString()),
+              null,
+              new BN(Date.now() / 1000 + 6),
+              {
+                intervals: {
+                  numIntervals: 2,
+                },
               },
-            })
+              null
+            )
             .accounts({
               crow,
               programConfig: findProgramConfigPda(),
@@ -1182,7 +1222,7 @@ describe("esCROW", () => {
           await expectFail(
             () =>
               user2Program.methods
-                .transferOut()
+                .transferOut(null)
                 .accounts({
                   crow,
                   programConfig: findProgramConfigPda(),
@@ -1212,11 +1252,11 @@ describe("esCROW", () => {
           )
         })
 
-        it("Can wait 3 seconds and claim half", async () => {
-          await sleep(3000)
+        it("Can wait 4 seconds and claim half", async () => {
+          await sleep(4000)
           const balBefore = await umi.rpc.getBalance(user2.publicKey)
           await user2Program.methods
-            .transferOut()
+            .transferOut(null)
             .accounts({
               crow,
               programConfig: findProgramConfigPda(),
@@ -1328,6 +1368,298 @@ describe("esCROW", () => {
             "Expected to have claimed half the available amount"
           )
         })
+      })
+    })
+  })
+
+  describe("FEES", () => {
+    describe("Fee free for dandies", () => {
+      let dandy: DigitalAsset
+      let pnft: DigitalAsset
+      let crow: PublicKey
+      const asset = umi.eddsa.generateKeypair()
+
+      before(async () => {
+        dandy = await createNft(umi, true, dandiesCollection.publicKey, user2.publicKey)
+        pnft = await createNft(umi, true, undefined, user2.publicKey)
+        crow = findCrowPda(dandy.publicKey)
+      })
+
+      it("doesn't cost anything to transfer into a dandy", async () => {
+        const balBefore = await umi.rpc.getBalance(user.publicKey)
+        await userProgram.methods
+          .transferIn({ sol: {} }, new BN(sol(1).basisPoints.toString()), null, null, { none: {} }, null)
+          .accounts({
+            crow,
+            programConfig: findProgramConfigPda(),
+            feesWallet: FEES_WALLET,
+            feeWaiver: null,
+            asset: asset.publicKey,
+            tokenMint: null,
+            nftMint: dandy.publicKey,
+            nftMetadata: dandy.metadata.publicKey,
+            escrowNftEdition: null,
+            escrowNftMetadata: null,
+            tokenAccount: null,
+            destinationToken: null,
+            ownerTokenRecord: null,
+            destinationTokenRecord: null,
+            metadataProgram: MPL_TOKEN_METADATA_PROGRAM_ID,
+            sysvarInstructions: anchor.web3.SYSVAR_INSTRUCTIONS_PUBKEY,
+            authRules: null,
+            authRulesProgram: null,
+          })
+          .signers([toWeb3JsKeypair(asset)])
+          .rpc()
+
+        const crowBal = await umi.rpc.getBalance(crow)
+
+        const balAfter = await umi.rpc.getBalance(user.publicKey)
+        assert.equal(
+          balBefore.basisPoints - balAfter.basisPoints,
+          sol(1).basisPoints + TX_FEE * 2n + crowBal.basisPoints
+        )
+      })
+
+      it("doesn't cost anything to claim from a dandy", async () => {
+        const balBefore = await umi.rpc.getBalance(user2.publicKey)
+        await user2Program.methods
+          .transferOut(null)
+          .accounts({
+            crow,
+            programConfig: findProgramConfigPda(),
+            feesWallet: FEES_WALLET,
+            feeWaiver: null,
+            asset: asset.publicKey,
+            tokenMint: null,
+            nftMint: dandy.publicKey,
+            nftMetadata: dandy.metadata.publicKey,
+            nftTokenRecord: getTokenRecordPda(dandy.publicKey, user2.publicKey),
+            nftToken: getTokenAccount(dandy.publicKey, user2.publicKey),
+            escrowNftEdition: null,
+            escrowNftMetadata: null,
+            tokenAccount: null,
+            destinationToken: null,
+            ownerTokenRecord: null,
+            destinationTokenRecord: null,
+            metadataProgram: MPL_TOKEN_METADATA_PROGRAM_ID,
+            sysvarInstructions: anchor.web3.SYSVAR_INSTRUCTIONS_PUBKEY,
+            authRules: null,
+            authRulesProgram: null,
+            authority: user.publicKey,
+            recipient: user2.publicKey,
+          })
+          .rpc()
+
+        const balAfter = await umi.rpc.getBalance(user2.publicKey)
+        assert.equal(balAfter.basisPoints - balBefore.basisPoints, sol(1).basisPoints - TX_FEE)
+      })
+    })
+
+    describe("Full fee waiver also free to claim", () => {
+      let nft: DigitalAsset
+      let crow: PublicKey
+      const asset = umi.eddsa.generateKeypair()
+
+      before(async () => {
+        nft = await createNft(umi, true, undefined, user2.publicKey)
+        crow = findCrowPda(nft.publicKey)
+      })
+
+      it("doesn't cost anything with fee waiver", async () => {
+        const balBefore = await umi.rpc.getBalance(user.publicKey)
+        await userProgram.methods
+          .transferIn({ sol: {} }, new BN(sol(1).basisPoints.toString()), null, null, { none: {} }, null)
+          .accounts({
+            crow,
+            programConfig: findProgramConfigPda(),
+            feesWallet: FEES_WALLET,
+            feeWaiver: FEE_WAIVER.publicKey,
+            asset: asset.publicKey,
+            tokenMint: null,
+            nftMint: nft.publicKey,
+            nftMetadata: nft.metadata.publicKey,
+            escrowNftEdition: null,
+            escrowNftMetadata: null,
+            tokenAccount: null,
+            destinationToken: null,
+            ownerTokenRecord: null,
+            destinationTokenRecord: null,
+            metadataProgram: MPL_TOKEN_METADATA_PROGRAM_ID,
+            sysvarInstructions: anchor.web3.SYSVAR_INSTRUCTIONS_PUBKEY,
+            authRules: null,
+            authRulesProgram: null,
+          })
+          .signers([toWeb3JsKeypair(asset), toWeb3JsKeypair(FEE_WAIVER)])
+          .rpc()
+
+        const crowBal = await umi.rpc.getBalance(crow)
+
+        const balAfter = await umi.rpc.getBalance(user.publicKey)
+        assert.equal(
+          balBefore.basisPoints - balAfter.basisPoints,
+          sol(1).basisPoints + TX_FEE * 3n + crowBal.basisPoints
+        )
+      })
+
+      it("doesn't cost anything to claim", async () => {
+        const balBefore = await umi.rpc.getBalance(user2.publicKey)
+        await user2Program.methods
+          .transferOut(null)
+          .accounts({
+            crow,
+            programConfig: findProgramConfigPda(),
+            feesWallet: FEES_WALLET,
+            feeWaiver: null,
+            asset: asset.publicKey,
+            tokenMint: null,
+            nftMint: nft.publicKey,
+            nftMetadata: nft.metadata.publicKey,
+            nftTokenRecord: getTokenRecordPda(nft.publicKey, user2.publicKey),
+            nftToken: getTokenAccount(nft.publicKey, user2.publicKey),
+            escrowNftEdition: null,
+            escrowNftMetadata: null,
+            tokenAccount: null,
+            destinationToken: null,
+            ownerTokenRecord: null,
+            destinationTokenRecord: null,
+            metadataProgram: MPL_TOKEN_METADATA_PROGRAM_ID,
+            sysvarInstructions: anchor.web3.SYSVAR_INSTRUCTIONS_PUBKEY,
+            authRules: null,
+            authRulesProgram: null,
+            authority: user.publicKey,
+            recipient: user2.publicKey,
+          })
+          .rpc()
+
+        const balAfter = await umi.rpc.getBalance(user2.publicKey)
+        assert.equal(balAfter.basisPoints - balBefore.basisPoints, sol(1).basisPoints - TX_FEE)
+      })
+    })
+
+    describe("Custom fee waiver", () => {
+      let nft: DigitalAsset
+      let crow: PublicKey
+      const asset = umi.eddsa.generateKeypair()
+
+      before(async () => {
+        nft = await createNft(umi, true, undefined, user2.publicKey)
+        crow = findCrowPda(nft.publicKey)
+      })
+
+      it("doesn't cost anything with fee waiver", async () => {
+        const balBefore = await umi.rpc.getBalance(user.publicKey)
+        await userProgram.methods
+          .transferIn(
+            { sol: {} },
+            new BN(sol(1).basisPoints.toString()),
+            null,
+            null,
+            { none: {} },
+            new BN(sol(0.001).basisPoints.toString())
+          )
+          .accounts({
+            crow,
+            programConfig: findProgramConfigPda(),
+            feesWallet: FEES_WALLET,
+            feeWaiver: FEE_WAIVER.publicKey,
+            asset: asset.publicKey,
+            tokenMint: null,
+            nftMint: nft.publicKey,
+            nftMetadata: nft.metadata.publicKey,
+            escrowNftEdition: null,
+            escrowNftMetadata: null,
+            tokenAccount: null,
+            destinationToken: null,
+            ownerTokenRecord: null,
+            destinationTokenRecord: null,
+            metadataProgram: MPL_TOKEN_METADATA_PROGRAM_ID,
+            sysvarInstructions: anchor.web3.SYSVAR_INSTRUCTIONS_PUBKEY,
+            authRules: null,
+            authRulesProgram: null,
+          })
+          .signers([toWeb3JsKeypair(asset), toWeb3JsKeypair(FEE_WAIVER)])
+          .rpc()
+
+        const crowBal = await umi.rpc.getBalance(crow)
+
+        const balAfter = await umi.rpc.getBalance(user.publicKey)
+        assert.equal(
+          balBefore.basisPoints - balAfter.basisPoints,
+          sol(1).basisPoints + TX_FEE * 3n + crowBal.basisPoints + sol(0.001).basisPoints
+        )
+      })
+
+      it("Cannot claim with a bespoke fee without fee waiver", async () => {
+        await expectFail(
+          () =>
+            user2Program.methods
+              .transferOut(new BN(sol(0.0001).basisPoints.toString()))
+              .accounts({
+                crow,
+                programConfig: findProgramConfigPda(),
+                feesWallet: FEES_WALLET,
+                feeWaiver: null,
+                asset: asset.publicKey,
+                tokenMint: null,
+                nftMint: nft.publicKey,
+                nftMetadata: nft.metadata.publicKey,
+                nftTokenRecord: getTokenRecordPda(nft.publicKey, user2.publicKey),
+                nftToken: getTokenAccount(nft.publicKey, user2.publicKey),
+                escrowNftEdition: null,
+                escrowNftMetadata: null,
+                tokenAccount: null,
+                destinationToken: null,
+                ownerTokenRecord: null,
+                destinationTokenRecord: null,
+                metadataProgram: MPL_TOKEN_METADATA_PROGRAM_ID,
+                sysvarInstructions: anchor.web3.SYSVAR_INSTRUCTIONS_PUBKEY,
+                authRules: null,
+                authRulesProgram: null,
+                authority: user.publicKey,
+                recipient: user2.publicKey,
+              })
+              .rpc(),
+          (err) => assertErrorCode(err, "FeeWaiverNotProvided")
+        )
+      })
+
+      it("Can claim with a bespoke fee", async () => {
+        const balBefore = await umi.rpc.getBalance(user2.publicKey)
+        await user2Program.methods
+          .transferOut(new BN(sol(0.0001).basisPoints.toString()))
+          .accounts({
+            crow,
+            programConfig: findProgramConfigPda(),
+            feesWallet: FEES_WALLET,
+            feeWaiver: FEE_WAIVER.publicKey,
+            asset: asset.publicKey,
+            tokenMint: null,
+            nftMint: nft.publicKey,
+            nftMetadata: nft.metadata.publicKey,
+            nftTokenRecord: getTokenRecordPda(nft.publicKey, user2.publicKey),
+            nftToken: getTokenAccount(nft.publicKey, user2.publicKey),
+            escrowNftEdition: null,
+            escrowNftMetadata: null,
+            tokenAccount: null,
+            destinationToken: null,
+            ownerTokenRecord: null,
+            destinationTokenRecord: null,
+            metadataProgram: MPL_TOKEN_METADATA_PROGRAM_ID,
+            sysvarInstructions: anchor.web3.SYSVAR_INSTRUCTIONS_PUBKEY,
+            authRules: null,
+            authRulesProgram: null,
+            authority: user.publicKey,
+            recipient: user2.publicKey,
+          })
+          .signers([toWeb3JsKeypair(FEE_WAIVER)])
+          .rpc()
+
+        const balAfter = await umi.rpc.getBalance(user2.publicKey)
+        assert.equal(
+          balAfter.basisPoints - balBefore.basisPoints,
+          sol(1).basisPoints - TX_FEE * 2n - sol(0.0001).basisPoints
+        )
       })
     })
   })

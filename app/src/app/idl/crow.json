@@ -166,6 +166,37 @@
       ]
     },
     {
+      "name": "init",
+      "accounts": [
+        {
+          "name": "crow",
+          "isMut": true,
+          "isSigner": false
+        },
+        {
+          "name": "nftMint",
+          "isMut": false,
+          "isSigner": false
+        },
+        {
+          "name": "nftMetadata",
+          "isMut": false,
+          "isSigner": false
+        },
+        {
+          "name": "payer",
+          "isMut": true,
+          "isSigner": true
+        },
+        {
+          "name": "systemProgram",
+          "isMut": false,
+          "isSigner": false
+        }
+      ],
+      "args": []
+    },
+    {
       "name": "transferOut",
       "accounts": [
         {
@@ -227,7 +258,7 @@
         },
         {
           "name": "nftToken",
-          "isMut": true,
+          "isMut": false,
           "isSigner": false
         },
         {
@@ -385,7 +416,7 @@
       "accounts": [
         {
           "name": "programConfig",
-          "isMut": true,
+          "isMut": false,
           "isSigner": false
         },
         {

@@ -11,6 +11,7 @@ use anchor_spl::{
 use crate::{
     constants::{FEES_WALLET, FEE_WAIVER},
     state::{Asset, AssetType, Crow, ProgramConfig, Vesting},
+    utils::get_fee,
     CrowError, TransferInEvent,
 };
 
@@ -208,45 +209,29 @@ pub fn transfer_in_handler(
     let maybe_token_mint = &ctx.accounts.token_mint;
     let fees_wallet = &ctx.accounts.fees_wallet;
 
-    let fees_waived = ctx.accounts.fee_waiver.is_some();
+    let fee_waiver = ctx.accounts.fee_waiver.is_some();
+    let actual_fee = get_fee(
+        &ctx.accounts.nft_metadata,
+        fee_waiver,
+        ctx.accounts.program_config.distribute_fee,
+        fee,
+    )
+    .unwrap();
 
-    if fees_waived {
-        let fee = fee.unwrap_or(0);
-        if fee > 0 {
-            let ix = anchor_lang::solana_program::system_instruction::transfer(
-                &ctx.accounts.authority.key(),
-                &fees_wallet.key(),
-                fee,
-            );
+    if actual_fee > 0 {
+        let ix = anchor_lang::solana_program::system_instruction::transfer(
+            &ctx.accounts.authority.key(),
+            &fees_wallet.key(),
+            actual_fee,
+        );
 
-            anchor_lang::solana_program::program::invoke(
-                &ix,
-                &[
-                    ctx.accounts.authority.to_account_info(),
-                    fees_wallet.to_account_info(),
-                ],
-            )?;
-        }
-    } else {
-        require!(fee.is_none(), CrowError::FeeWaiverNotProvided);
-
-        let tx_fee = ctx.accounts.program_config.distribute_fee;
-
-        if tx_fee > 0 {
-            let ix = anchor_lang::solana_program::system_instruction::transfer(
-                &ctx.accounts.authority.key(),
-                &fees_wallet.key(),
-                tx_fee,
-            );
-
-            anchor_lang::solana_program::program::invoke(
-                &ix,
-                &[
-                    ctx.accounts.authority.to_account_info(),
-                    fees_wallet.to_account_info(),
-                ],
-            )?;
-        }
+        anchor_lang::solana_program::program::invoke(
+            &ix,
+            &[
+                ctx.accounts.authority.to_account_info(),
+                fees_wallet.to_account_info(),
+            ],
+        )?;
     }
 
     if asset_type == AssetType::Nft {
@@ -333,7 +318,7 @@ pub fn transfer_in_handler(
         start_time,
         end_time,
         vesting,
-        fees_waived && fee.unwrap_or(0) == 0,
+        fee_waiver && fee.unwrap_or(0) == 0,
     );
 
     if crow.nft_mint == Pubkey::default() {
@@ -343,7 +328,10 @@ pub fn transfer_in_handler(
                 .token_standard
                 .as_ref()
                 .unwrap_or(&TokenStandard::NonFungible),
-            TokenStandard::NonFungible | TokenStandard::ProgrammableNonFungible
+            TokenStandard::NonFungible
+                | TokenStandard::ProgrammableNonFungible
+                | TokenStandard::NonFungibleEdition
+                | TokenStandard::ProgrammableNonFungibleEdition
         ) {
             return err!(CrowError::TokenNotNft);
         }

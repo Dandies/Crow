@@ -27,5 +27,5 @@ export enum PriorityFees {
   MEDIUM = "Medium",
   HIGH = "High",
   VERYHIGH = "VeryHigh",
-  UNSAFEMAX = "UnsafeMax",
+  // UNSAFEMAX = "UnsafeMax",
 }

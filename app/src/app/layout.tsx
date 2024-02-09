@@ -32,7 +32,14 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
-      <body>
+      <body
+        style={{
+          backgroundImage: "url(/tapestry.svg)",
+          backgroundSize: "100px",
+          width: "100%",
+          backgroundColor: "black",
+        }}
+      >
         <Toaster />
         <Stack sx={{ height: "100vh" }}>
           <Providers>
@@ -41,12 +48,14 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             <Box
               sx={{
                 flexGrow: 1,
-                backgroundImage: "url('/tapestry.svg')",
-                backgroundSize: "100px",
                 overflow: "hidden",
+                height: "100%",
+                width: "100%",
+                background:
+                  "linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.2) 32%, rgba(255,255,255,0) 70%)",
               }}
             >
-              <Container maxWidth={false} sx={{ height: "100%", pt: 5 }}>
+              <Container maxWidth={false} sx={{ height: "100%" }}>
                 {children}
               </Container>
             </Box>

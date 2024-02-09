@@ -17,6 +17,7 @@ use anchor_spl::{
 use crate::{
     constants::{FEES_WALLET, FEE_WAIVER},
     state::{Asset, AssetType, Crow, ProgramConfig, Vesting},
+    utils::get_fee,
     CrowError, TransferOutEvent,
 };
 
@@ -215,7 +216,7 @@ impl<'info> TransferOut<'info> {
     pub fn close_account_ctx(&self) -> CpiContext<'_, '_, '_, 'info, CloseAccount<'info>> {
         let cpi_accounts = CloseAccount {
             account: self.token_account.as_ref().unwrap().to_account_info(),
-            destination: self.fees_wallet.to_account_info(),
+            destination: self.authority.to_account_info(),
             authority: self.crow.to_account_info(),
         };
         let cpi_program = self.token_program.to_account_info();
@@ -233,43 +234,28 @@ pub fn transfer_out_handler(ctx: Context<TransferOut>, fee: Option<u64>) -> Resu
     let bump = crow.bump;
 
     if !asset.fees_waived {
-        if ctx.accounts.fee_waiver.is_none() {
-            require!(fee.is_none(), CrowError::FeeWaiverNotProvided);
+        let fee_waiver = ctx.accounts.fee_waiver.is_some();
+        let actual_fee = get_fee(
+            &ctx.accounts.nft_metadata,
+            fee_waiver,
+            ctx.accounts.program_config.claim_fee,
+            fee,
+        )?;
 
-            let tx_fee = ctx.accounts.program_config.claim_fee;
+        if actual_fee > 0 {
+            let ix = anchor_lang::solana_program::system_instruction::transfer(
+                &ctx.accounts.owner.key(),
+                &fees_wallet.key(),
+                actual_fee,
+            );
 
-            if tx_fee > 0 {
-                let ix = anchor_lang::solana_program::system_instruction::transfer(
-                    &ctx.accounts.owner.key(),
-                    &fees_wallet.key(),
-                    tx_fee,
-                );
-
-                anchor_lang::solana_program::program::invoke(
-                    &ix,
-                    &[
-                        ctx.accounts.owner.to_account_info(),
-                        fees_wallet.to_account_info(),
-                    ],
-                )?;
-            }
-        } else {
-            let fee = fee.unwrap_or(0);
-            if fee > 0 {
-                let ix = anchor_lang::solana_program::system_instruction::transfer(
-                    &ctx.accounts.owner.key(),
-                    &fees_wallet.key(),
-                    fee,
-                );
-
-                anchor_lang::solana_program::program::invoke(
-                    &ix,
-                    &[
-                        ctx.accounts.owner.to_account_info(),
-                        fees_wallet.to_account_info(),
-                    ],
-                )?;
-            }
+            anchor_lang::solana_program::program::invoke(
+                &ix,
+                &[
+                    ctx.accounts.owner.to_account_info(),
+                    fees_wallet.to_account_info(),
+                ],
+            )?;
         }
     }
 

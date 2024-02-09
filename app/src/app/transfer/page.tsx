@@ -2,16 +2,9 @@
 import * as anchor from "@coral-xyz/anchor"
 import { publicKey, sol, unwrapOptionRecursively } from "@metaplex-foundation/umi"
 import { useAnchor } from "../context/anchor"
-import {
-  findCrowPda,
-  findProgramConfigPda,
-  findProgramDataAddress,
-  getTokenAccount,
-  getTokenRecordPda,
-} from "../helpers/pdas"
+import { findCrowPda } from "../helpers/pdas"
 import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs"
 
-import BN from "bn.js"
 import {
   Box,
   Button,
@@ -19,7 +12,6 @@ import {
   CardContent,
   CircularProgress,
   Container,
-  Dialog,
   FormControlLabel,
   FormHelperText,
   FormLabel,
@@ -39,48 +31,32 @@ import {
   Theme,
   ToggleButton,
   ToggleButtonGroup,
+  Tooltip,
   Typography,
   useMediaQuery,
 } from "@mui/material"
-import { Dispatch, SetStateAction, memo, useEffect, useMemo, useRef, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider"
 
 import {
   DigitalAssetWithToken,
   JsonMetadata,
-  MPL_TOKEN_METADATA_PROGRAM_ID,
   TokenStandard,
   fetchDigitalAsset,
   fetchDigitalAssetWithAssociatedToken,
-  fetchDigitalAssetWithTokenByMint,
-  fetchJsonMetadata,
-  findMasterEditionPda,
-  findMetadataPda,
 } from "@metaplex-foundation/mpl-token-metadata"
 import { useUmi } from "../context/umi"
-import { toWeb3JsKeypair } from "@metaplex-foundation/umi-web3js-adapters"
+import { toWeb3JsKeypair, toWeb3JsPublicKey } from "@metaplex-foundation/umi-web3js-adapters"
 import { AssetWithPublicKey, Crow } from "../types/types"
 import { useWallet } from "@solana/wallet-adapter-react"
 import { DateTimePicker } from "@mui/x-date-pickers"
 import { Dayjs } from "dayjs"
-import { useDigitalAssets } from "../context/digital-assets"
-import { groupBy, orderBy, toLength } from "lodash"
+import { DigitalAssetWithCrow, useDigitalAssets } from "../context/digital-assets"
+import { groupBy, mapValues, orderBy } from "lodash"
 import useOnScreen from "../hooks/use-on-screen"
-import { DAS, Helius } from "helius-sdk"
+import { DAS } from "helius-sdk"
 import toast from "react-hot-toast"
-import { FEES_WALLET } from "../constants"
-import { MPL_TOKEN_AUTH_RULES_PROGRAM_ID } from "@metaplex-foundation/mpl-token-auth-rules"
-import {
-  ArrowBackIos,
-  ArrowBackIosNew,
-  ArrowDownward,
-  ArrowForwardIos,
-  ArrowLeft,
-  CheckBox,
-  Close,
-  Download,
-  WidthFull,
-} from "@mui/icons-material"
+import { ArrowForwardIos, Close, Download } from "@mui/icons-material"
 import { Center } from "../components/Center"
 import { getAllFungiblesByOwner, getDigitalAsset } from "../helpers/helius"
 import { dayjs } from "../helpers/dayjs"
@@ -88,21 +64,23 @@ import { shorten } from "../helpers/utils"
 import { getDistributeTx } from "../helpers/transactions"
 import base58 from "bs58"
 import { usePriorityFees } from "../context/priority-fees"
-import { Token, fetchAllTokenByOwner } from "@metaplex-foundation/mpl-toolbox"
 import { TokenWithTokenInfo } from "../page"
+import { WalletButton } from "../components/WalletButton"
+import { useSearchParams } from "next/navigation"
 
 type DigitalAssetWithTokenAndJson = DigitalAssetWithToken & {
   json: JsonMetadata
 }
 
 export default function Create() {
-  const program = useAnchor()
+  const searchParams = useSearchParams()
+  const { fetchAccounts, removeNft } = useDigitalAssets()
   const { feeLevel } = usePriorityFees()
   const [vestingType, setVestingType] = useState("none")
-  const [nftMint, setNftMint] = useState("")
+  const [nftMint, setNftMint] = useState(searchParams.get("nft") || "")
   const [nftMintError, setNftMintError] = useState<string | null>(null)
   const [type, setType] = useState("token")
-  const [amount, setAmount] = useState("0")
+  const [amount, setAmount] = useState("")
   const [da, setDa] = useState<DAS.GetAssetResponse | null>(null)
   const [loading, setLoading] = useState(false)
   const [tokenMint, setTokenMint] = useState("")
@@ -117,6 +95,7 @@ export default function Create() {
   const [numIntervals, setNumIntervals] = useState("2")
   const [choosingType, setChoosingType] = useState("source")
   const [tokenSelectorShowing, setTokenSelectorShowing] = useState(false)
+  const resolvePromise = useRef<(value: void | PromiseLike<void>) => void>()
 
   const [nftModalshowing, setNftModalShowing] = useState(false)
   const wallet = useWallet()
@@ -252,36 +231,40 @@ export default function Create() {
         throw new Error("Digital Asset not found")
       }
 
-      const promise = Promise.resolve().then(async () => {
-        const serialized = await getDistributeTx({
-          payerPk: umi.identity.publicKey,
-          assetId: da.id,
-          type,
-          vestingType,
-          escrowNftPk: escrowDa?.id,
-          numIntervals: Number(numIntervals),
-          amount: String(Number(amount) * Number(factor)),
-          tokenPk: token?.publicKey,
-          startDate: startDate?.unix(),
-          endDate: endDate?.unix(),
-          feeLevel,
-        })
+      const promise = new Promise<void>(async (resolve, reject) => {
+        try {
+          resolvePromise.current = resolve
+          const serialized = await getDistributeTx({
+            payerPk: umi.identity.publicKey,
+            assetId: da.id,
+            type,
+            vestingType,
+            escrowNftPk: escrowDa?.id,
+            numIntervals: Number(numIntervals),
+            amount: String(Number(amount) * Number(factor)),
+            tokenPk: token?.publicKey,
+            startDate: startDate?.unix(),
+            endDate: endDate?.unix(),
+            feeLevel,
+          })
 
-        const tx = umi.transactions.deserialize(base58.decode(serialized))
-        const signed = await umi.identity.signTransaction(tx)
-        console.log(signed)
-        const sig = await umi.rpc.sendTransaction(signed, { skipPreflight: true })
-        console.log(sig)
-        const conf = await umi.rpc.confirmTransaction(sig, {
-          strategy: {
-            type: "blockhash",
-            ...(await umi.rpc.getLatestBlockhash()),
-          },
-        })
-        console.log(conf)
+          const tx = umi.transactions.deserialize(base58.decode(serialized))
+          const signed = await umi.identity.signTransaction(tx)
+          const sig = await umi.rpc.sendTransaction(signed, { skipPreflight: true })
+          const conf = await umi.rpc.confirmTransaction(sig, {
+            strategy: {
+              type: "blockhash",
+              ...(await umi.rpc.getLatestBlockhash()),
+            },
+          })
 
-        if (conf.value.err) {
-          throw new Error("Error confirming tx")
+          if (conf.value.err) {
+            throw new Error("Error confirming tx")
+          }
+
+          resolve()
+        } catch (err) {
+          reject(err)
         }
       })
 
@@ -293,10 +276,14 @@ export default function Create() {
 
       await promise
       cancel()
+      if (type === "nft") {
+        removeNft(escrowNftMint)
+      }
     } catch (err: any) {
       console.error(err.stack)
     } finally {
       setLoading(false)
+      fetchAccounts()
     }
   }
 
@@ -311,9 +298,11 @@ export default function Create() {
     setType("token")
     setToken(null)
     setTokenMint("")
-    setAmount("0")
+    setAmount("")
     setNftMint("")
+    setDa(null)
     setEscrowNftMint("")
+    setEscrowDa(null)
   }
 
   function onNftSelected(nft: DAS.GetAssetResponse) {
@@ -358,130 +347,327 @@ export default function Create() {
     setTokenSelectorShowing(false)
   }
 
+  if (!wallet.publicKey) {
+    return (
+      <Center>
+        <Stack spacing={2} alignItems="center">
+          <Typography fontWeight="bold" textTransform="uppercase">
+            Wallet disconnected
+          </Typography>
+          <WalletButton />
+        </Stack>
+      </Center>
+    )
+  }
+
   return (
-    <Box height="100%">
-      <Grid container spacing={4} overflow={{ xs: "scroll", lg: "hidden" }} height="100%">
-        <Grid item xs={12} lg={5.5} sx={{ height: { lg: "100%", xs: "unset" } }}>
-          <Card
-            sx={{
-              backdropFilter: "blur(3px)",
-              backgroundColor: "rgba(245, 245, 247, 0)",
-              border: "1px solid rgba(169, 169, 169, .12)",
-              // backgroundColor: "rgba(0, 0, 0, 0.9)",
-              borderRadius: "10px",
-              height: { lg: "100%", xs: "unset" },
-            }}
-          >
-            <CardContent sx={{ height: "100%", overflow: "auto" }}>
-              <Stack spacing={2} justifyContent="space-between" height="100%">
-                <Stack spacing={2}>
-                  <Typography variant="h5" fontWeight="bold" textTransform="uppercase">
-                    Put this 👉
+    <Container maxWidth="lg" sx={{ height: "100%" }}>
+      <Center>
+        <Grid container spacing={4} overflow={{ xs: "scroll", lg: "hidden" }} height="80vh">
+          <Grid item xs={12} lg={5.5}>
+            <Stack spacing={2} sx={{ height: { lg: "100%", xs: "unset" } }}>
+              <Card
+                sx={{
+                  border: "1px solid rgba(169, 169, 169, .12)",
+                  borderRadius: "10px",
+                  flexGrow: 1,
+                }}
+              >
+                <Box p={1} sx={{ backgroundColor: "primary.main" }}>
+                  <Typography variant="h5" fontWeight="bold" textTransform="uppercase" color="black" textAlign="center">
+                    Assets
                   </Typography>
-                  <ToggleButtonGroup
-                    value={type}
-                    exclusive
-                    onChange={(e, val) => val && setType(val)}
-                    color="primary"
-                    fullWidth
-                  >
-                    <ToggleButton value="token">Token</ToggleButton>
-                    <ToggleButton value="sol">SOL</ToggleButton>
-                    <ToggleButton value="nft">NFT</ToggleButton>
-                  </ToggleButtonGroup>
-                  {type === "token" && (
-                    <Stack spacing={2}>
-                      <TextField
-                        label="Token mint"
-                        value={tokenMint}
-                        onChange={(e) => setTokenMint(e.target.value)}
-                        error={!!tokenMintError}
-                        helperText={tokenMintError}
-                        InputProps={{
-                          endAdornment: (
-                            <InputAdornment position="end">
-                              <Button onClick={toggleTokenSelector}>Choose</Button>
-                            </InputAdornment>
-                          ),
-                        }}
-                      />
-                    </Stack>
-                  )}
-                  {["token", "sol"].includes(type) && (
-                    <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
-                      <TextField
-                        label="Amount to share"
-                        type="number"
-                        value={amount}
-                        onChange={(e) => setAmount(e.target.value || e.target.value === "0" ? e.target.value : "")}
-                        inputProps={{
-                          max:
-                            type === "token"
-                              ? Number(token?.token.amount || 0n / factor)
-                              : Number((balance * 100n) / factor) / 100,
-                          min: 0,
-                          step: 1 / Math.pow(10, (token?.mint.decimals || 9) - 6),
-                        }}
-                        InputProps={{
-                          startAdornment: (
-                            <InputAdornment position="start">
-                              {type === "token" ? token?.metadata.symbol || "$TOKEN" : "◎"}
-                            </InputAdornment>
-                          ),
-                          endAdornment: (
-                            <InputAdornment position="end">
-                              <Button onClick={setMax}>Max</Button>
-                            </InputAdornment>
-                          ),
-                        }}
+                </Box>
+                <CardContent sx={{ height: "100%", overflow: "auto" }}>
+                  <Stack spacing={2}>
+                    <Stack spacing={1}>
+                      <Typography color="primary" textTransform="uppercase" fontWeight="bold">
+                        Asset Selection
+                      </Typography>
+                      <ToggleButtonGroup
+                        value={type}
+                        exclusive
+                        onChange={(e, val) => val && setType(val)}
+                        color="primary"
                         fullWidth
-                      />
-                      {type === "sol" && (
+                      >
+                        <ToggleButton value="token">Token</ToggleButton>
+                        <ToggleButton value="sol">SOL</ToggleButton>
+                        <ToggleButton value="nft">NFT</ToggleButton>
+                      </ToggleButtonGroup>
+                    </Stack>
+                    {type === "token" && (
+                      <Stack spacing={2}>
                         <TextField
-                          label="SOL Balance"
-                          value={(Number((balance * 100n) / 10n ** 9n) / 100).toLocaleString()}
-                          disabled
-                          InputProps={{
-                            startAdornment: <InputAdornment position="start">◎</InputAdornment>,
-                          }}
-                          sx={{
-                            "& .MuiInputBase-input.Mui-disabled": {
-                              WebkitTextFillColor: "#ffffff",
-                            },
-                          }}
-                          fullWidth
-                        />
-                      )}
-                      {type === "token" && (
-                        <TextField
-                          label="Token balance"
-                          value={
-                            token
-                              ? (
-                                  Number((token.token.amount * 100n) / 10n ** BigInt(token.mint.decimals)) / 100
-                                ).toLocaleString()
-                              : 0
-                          }
+                          label="Token mint"
+                          value={tokenMint}
+                          onChange={(e) => setTokenMint(e.target.value)}
+                          error={!!tokenMintError}
+                          helperText={tokenMintError}
+                          size="small"
                           InputProps={{
                             endAdornment: (
-                              <InputAdornment position="end">{token?.metadata.symbol || "$TOKEN"}</InputAdornment>
+                              <InputAdornment position="end">
+                                <Button onClick={toggleTokenSelector}>Choose</Button>
+                              </InputAdornment>
                             ),
                           }}
-                          disabled
-                          sx={{
-                            "& .MuiInputBase-input.Mui-disabled": {
-                              WebkitTextFillColor: "#ffffff",
-                            },
-                          }}
-                          fullWidth
                         />
-                      )}
-                    </Stack>
-                  )}
+                      </Stack>
+                    )}
+                    {["token", "sol"].includes(type) && (
+                      <Stack spacing={1}>
+                        <Typography color="primary" textTransform="uppercase" fontWeight="bold">
+                          Amount to send
+                        </Typography>
+                        <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
+                          <TextField
+                            label="Enter amount"
+                            type="number"
+                            value={amount}
+                            onChange={(e) => setAmount(e.target.value || e.target.value === "0" ? e.target.value : "")}
+                            inputProps={{
+                              max:
+                                type === "token"
+                                  ? Number(token?.token.amount || 0n / factor)
+                                  : Number((balance * 100n) / factor) / 100,
+                              min: 0,
+                              step: 1 / Math.pow(10, (token?.mint.decimals || 9) - 6),
+                            }}
+                            InputProps={{
+                              startAdornment: (
+                                <InputAdornment position="start">
+                                  {type === "token" ? token?.metadata.symbol || "$TOKEN" : "◎"}
+                                </InputAdornment>
+                              ),
+                              endAdornment: (
+                                <InputAdornment position="end">
+                                  <Button onClick={setMax}>Max</Button>
+                                </InputAdornment>
+                              ),
+                            }}
+                            fullWidth
+                          />
+                          {type === "sol" && (
+                            <TextField
+                              label="SOL Balance"
+                              value={(Number((balance * 100n) / 10n ** 9n) / 100).toLocaleString()}
+                              disabled
+                              InputProps={{
+                                startAdornment: <InputAdornment position="start">◎</InputAdornment>,
+                              }}
+                              sx={{
+                                "& .MuiInputBase-input.Mui-disabled": {
+                                  WebkitTextFillColor: "#ffffff",
+                                },
+                              }}
+                              fullWidth
+                            />
+                          )}
+                          {type === "token" && (
+                            <TextField
+                              label="Token balance"
+                              value={
+                                token
+                                  ? (
+                                      Number((token.token.amount * 100n) / 10n ** BigInt(token.mint.decimals)) / 100
+                                    ).toLocaleString()
+                                  : 0
+                              }
+                              InputProps={{
+                                endAdornment: (
+                                  <InputAdornment position="end">{token?.metadata.symbol || "$TOKEN"}</InputAdornment>
+                                ),
+                              }}
+                              disabled
+                              sx={{
+                                "& .MuiInputBase-input.Mui-disabled": {
+                                  WebkitTextFillColor: "#ffffff",
+                                },
+                              }}
+                              fullWidth
+                            />
+                          )}
+                        </Stack>
+                      </Stack>
+                    )}
 
-                  {type === "nft" && (
+                    {type === "nft" && (
+                      <Stack spacing={2} alignItems="center">
+                        {escrowDa ? (
+                          <Box
+                            maxWidth={300}
+                            width="100%"
+                            position="relative"
+                            sx={{ aspectRatio: "1 / 1", ":hover": { ".MuiBox-root": { opacity: "1 !important" } } }}
+                          >
+                            <Box
+                              position="absolute"
+                              top={0}
+                              left={0}
+                              right={0}
+                              bottom={0}
+                              sx={{ opacity: 0, transition: "opacity .2s" }}
+                            >
+                              <Center>
+                                <Button
+                                  onClick={toggleSourceNftModalShowing}
+                                  variant="contained"
+                                  sx={{ whiteSpace: "nowrap" }}
+                                >
+                                  Change NFT
+                                </Button>
+                              </Center>
+                            </Box>
+
+                            <img
+                              src={`https://img-cdn.magiceden.dev/rs:fill:400:400:0:0/plain/${escrowDa.content?.links?.image}`}
+                              style={{ display: "block", width: "100%" }}
+                            />
+                          </Box>
+                        ) : (
+                          <Box
+                            sx={{
+                              border: "4px dashed",
+                              borderColor: "text.secondary",
+                              aspectRatio: "1 / 1",
+                              borderRadius: 3,
+                            }}
+                            maxWidth={300}
+                            width="100%"
+                            padding={4}
+                          >
+                            <Center>
+                              <Button
+                                onClick={toggleSourceNftModalShowing}
+                                variant="contained"
+                                sx={{ whiteSpace: "nowrap" }}
+                              >
+                                Choose NFT
+                              </Button>
+                            </Center>
+                          </Box>
+                        )}
+                      </Stack>
+                    )}
+                    {type !== "nft" && (
+                      <Stack spacing={1}>
+                        <Typography color="primary" textTransform="uppercase" fontWeight="bold">
+                          Asset claim vesting
+                        </Typography>
+                        <ToggleButtonGroup
+                          exclusive
+                          value={vestingType}
+                          onChange={(e, val) => val && setVestingType(val)}
+                          color="primary"
+                          fullWidth
+                          orientation={isXs ? "vertical" : "horizontal"}
+                        >
+                          <ToggleButton value="none">
+                            <Stack>
+                              <Typography variant="body2">None</Typography>
+                              <Typography variant="body2" fontSize="12px">
+                                Full amount can be claimed after start date
+                              </Typography>
+                            </Stack>
+                          </ToggleButton>
+                          <ToggleButton value="linear">
+                            <Stack>
+                              <Typography variant="body2">Linear</Typography>
+                              <Typography variant="body2" fontSize="12px">
+                                Amount is claimable spread over the given timeframe
+                              </Typography>
+                            </Stack>
+                          </ToggleButton>
+                          <ToggleButton value="intervals">
+                            <Stack>
+                              <Typography variant="body2">Intervals</Typography>
+                              <Typography variant="body2" fontSize="12px">
+                                Amount is claimable at given intervals
+                              </Typography>
+                            </Stack>
+                          </ToggleButton>
+                        </ToggleButtonGroup>
+                      </Stack>
+                    )}
+
+                    <LocalizationProvider dateAdapter={AdapterDayjs}>
+                      <Stack spacing={2} direction={{ xs: "column", sm: "row" }}>
+                        <Stack width="100%">
+                          <DateTimePicker
+                            label="Start date"
+                            value={startDate}
+                            onChange={(newValue) => setStartDate(newValue)}
+                            format="YYYY/MM/DD HH:mm:ss"
+                            sx={{ width: "100%" }}
+                            minDate={dayjs()}
+                            ampm={false}
+                          />
+
+                          <FormHelperText>Leave blank for asset to be claimable immediately</FormHelperText>
+                        </Stack>
+                        {vestingType !== "none" && (
+                          <DateTimePicker
+                            label="End date"
+                            value={endDate}
+                            onChange={(newValue) => setEndDate(newValue)}
+                            format="YYYY/MM/DD HH:mm:ss"
+                            sx={{ width: "100%" }}
+                            minDate={dayjs()}
+                            ampm={false}
+                          />
+                        )}
+                        {vestingType === "intervals" && (
+                          <TextField
+                            type="number"
+                            label="Number of intervals"
+                            value={numIntervals}
+                            onChange={(e) => setNumIntervals(e.target.value)}
+                            inputProps={{
+                              max: 65535,
+                              min: 2,
+                              step: 1,
+                            }}
+                            fullWidth
+                          />
+                        )}
+                      </Stack>
+                    </LocalizationProvider>
+                  </Stack>
+                </CardContent>
+              </Card>
+            </Stack>
+          </Grid>
+          <Grid item xs={12} lg={1}>
+            <Center>
+              <ArrowForwardIos fontSize="large" sx={{ transform: isMd ? "rotate(90deg)" : "unset" }} />
+            </Center>
+          </Grid>
+          <Grid item xs={12} lg={5.5}>
+            <Stack spacing={2} sx={{ height: { lg: "100%", xs: "unset" } }}>
+              <Card
+                sx={{
+                  border: "1px solid rgba(169, 169, 169, .12)",
+                  borderRadius: "10px",
+                  flexGrow: 1,
+                }}
+              >
+                <Box sx={{ backgroundColor: "primary.main" }} p={1}>
+                  <Typography variant="h5" fontWeight="bold" textTransform="uppercase" textAlign="center" color="black">
+                    Destination NFT
+                  </Typography>
+                </Box>
+                <CardContent sx={{ height: "100%", overflow: "auto" }}>
+                  <Stack spacing={2}>
+                    <TextField
+                      label="NFT Mint"
+                      value={nftMint}
+                      onChange={(e) => setNftMint(e.target.value)}
+                      error={!!nftMintError}
+                      helperText={nftMintError}
+                    />
                     <Stack spacing={2} alignItems="center">
-                      {escrowDa ? (
+                      {da ? (
                         <Box
                           maxWidth={300}
                           width="100%"
@@ -498,7 +684,7 @@ export default function Create() {
                           >
                             <Center>
                               <Button
-                                onClick={toggleSourceNftModalShowing}
+                                onClick={toggleDestinationNftModalShowing}
                                 variant="contained"
                                 sx={{ whiteSpace: "nowrap" }}
                               >
@@ -508,7 +694,7 @@ export default function Create() {
                           </Box>
 
                           <img
-                            src={`https://img-cdn.magiceden.dev/rs:fill:400:400:0:0/plain/${escrowDa.content?.links?.image}`}
+                            src={`https://img-cdn.magiceden.dev/rs:fill:400:400:0:0/plain/${da.content?.links?.image}`}
                             style={{ display: "block", width: "100%" }}
                           />
                         </Box>
@@ -526,7 +712,7 @@ export default function Create() {
                         >
                           <Center>
                             <Button
-                              onClick={toggleSourceNftModalShowing}
+                              onClick={toggleDestinationNftModalShowing}
                               variant="contained"
                               sx={{ whiteSpace: "nowrap" }}
                             >
@@ -535,237 +721,91 @@ export default function Create() {
                           </Center>
                         </Box>
                       )}
+                      {da && <CrowContents da={da} resolvePromise={resolvePromise.current} />}
                     </Stack>
-                  )}
-                  {type !== "nft" && (
-                    <Stack spacing={1}>
-                      <FormLabel>Asset claim vesting</FormLabel>
-                      <ToggleButtonGroup
-                        exclusive
-                        value={vestingType}
-                        onChange={(e, val) => val && setVestingType(val)}
-                        color="primary"
-                        fullWidth
-                        orientation={isXs ? "vertical" : "horizontal"}
-                      >
-                        <ToggleButton value="none">
-                          <Stack>
-                            <Typography>None</Typography>
-                            <Typography variant="body2">Full amount can be claimed after start date</Typography>
-                          </Stack>
-                        </ToggleButton>
-                        <ToggleButton value="linear">
-                          <Stack>
-                            <Typography>Linear</Typography>
-                            <Typography variant="body2">Amount is claimable spread over the given timeframe</Typography>
-                          </Stack>
-                        </ToggleButton>
-                        <ToggleButton value="intervals">
-                          <Stack>
-                            <Typography>Intervals</Typography>
-                            <Typography variant="body2">Amount is claimable at given intervals</Typography>
-                          </Stack>
-                        </ToggleButton>
-                      </ToggleButtonGroup>
-                    </Stack>
-                  )}
+                  </Stack>
+                </CardContent>
+              </Card>
+            </Stack>
+          </Grid>
+          <Grid item xs={12}>
+            <Stack
+              direction="row"
+              spacing={2}
+              alignItems="bottom"
+              justifyContent="space-between"
+              width="100%"
+              height="100%"
+            >
+              <Box display="flex" alignItems="flex-end">
+                <Button onClick={cancel} color="error" variant="contained">
+                  Clear
+                </Button>
+              </Box>
+              <Box display="flex" alignItems="flex-end">
+                <Button onClick={transferIn} disabled={loading || !canSubmit} variant="contained">
+                  Transfer to NFT
+                </Button>
+              </Box>
+            </Stack>
+          </Grid>
+        </Grid>
 
-                  <LocalizationProvider dateAdapter={AdapterDayjs}>
-                    <Stack spacing={2} direction={{ xs: "column", sm: "row" }}>
-                      <Stack width="100%">
-                        <DateTimePicker
-                          label="Start date"
-                          value={startDate}
-                          onChange={(newValue) => setStartDate(newValue)}
-                          format="YYYY/MM/DD HH:mm:ss"
-                          sx={{ width: "100%" }}
-                          minDate={dayjs()}
-                          ampm={false}
-                        />
-                        {vestingType === "none" && (
-                          <FormHelperText>Leave blank for asset to be claimable immediately</FormHelperText>
-                        )}
-                      </Stack>
-                      {vestingType !== "none" && (
-                        <DateTimePicker
-                          label="End date"
-                          value={endDate}
-                          onChange={(newValue) => setEndDate(newValue)}
-                          format="YYYY/MM/DD HH:mm:ss"
-                          sx={{ width: "100%" }}
-                          minDate={dayjs()}
-                          ampm={false}
-                        />
-                      )}
-                      {vestingType === "intervals" && (
-                        <TextField
-                          type="number"
-                          label="Number of intervals"
-                          value={numIntervals}
-                          onChange={(e) => setNumIntervals(e.target.value)}
-                          inputProps={{
-                            max: 65535,
-                            min: 2,
-                            step: 1,
-                          }}
-                          fullWidth
-                        />
-                      )}
-                    </Stack>
-                  </LocalizationProvider>
-                </Stack>
-                <Stack direction="row" spacing={2} alignItems="center" justifyContent="space-between">
-                  <Button onClick={cancel} color="error" variant="outlined">
-                    Cancel
-                  </Button>
-                  <Button onClick={transferIn} disabled={loading || !canSubmit} variant="contained">
-                    Transfer to NFT
-                  </Button>
-                </Stack>
-              </Stack>
-            </CardContent>
-          </Card>
-        </Grid>
-        <Grid item xs={12} lg={1} sx={{ height: { lg: "100%", xs: "unset" } }}>
-          <Center>
-            <ArrowForwardIos fontSize="large" sx={{ transform: isMd ? "rotate(90deg)" : "unset" }} />
-          </Center>
-        </Grid>
-        <Grid item xs={12} lg={5.5} sx={{ height: { lg: "100%", xs: "unset" } }}>
-          <Card
+        <Modal
+          open={tokenSelectorShowing}
+          onClose={toggleTokenSelector}
+          sx={{
+            display: "flex",
+            justifyContent: "center",
+            alignItems: "center",
+          }}
+        >
+          <Container
             sx={{
-              backdropFilter: "blur(3px)",
-              backgroundColor: "rgba(245, 245, 247, 0)",
-              border: "1px solid rgba(169, 169, 169, .12)",
-              borderRadius: "10px",
-              height: { lg: "100%", xs: "unset" },
+              margin: { sm: 10, xs: 0 },
+              height: { sm: "80vh", xs: "100vh" },
+              outline: "none",
+              overflowY: { xs: "auto" },
             }}
           >
-            <CardContent sx={{ height: "100%", overflow: "auto" }}>
-              <Stack spacing={2}>
-                <Typography variant="h5" fontWeight="bold" textTransform="uppercase">
-                  👌 In this
-                </Typography>
-                <TextField
-                  label="NFT Mint"
-                  value={nftMint}
-                  onChange={(e) => setNftMint(e.target.value)}
-                  error={!!nftMintError}
-                  helperText={nftMintError}
+            <Card sx={{ height: "100%", overflow: "hidden" }}>
+              <CardContent sx={{ overflow: "auto", height: "100%" }}>
+                <TokenSelector onSelect={onTokenSelect} />
+              </CardContent>
+            </Card>
+          </Container>
+        </Modal>
+
+        <Modal
+          open={nftModalshowing}
+          onClose={toggleNftModalShowing}
+          sx={{
+            display: "flex",
+            justifyContent: "center",
+            alignItems: "center",
+          }}
+        >
+          <Container
+            sx={{
+              margin: { sm: 10, xs: 0 },
+              height: { sm: "80vh", xs: "100vh" },
+              outline: "none",
+              overflowY: { xs: "auto" },
+            }}
+          >
+            <Card sx={{ height: "100%" }}>
+              <CardContent sx={{ height: "100%" }}>
+                <NftSelector
+                  onSelect={onNftSelected}
+                  close={toggleNftModalShowing}
+                  omit={choosingType === "source" ? nftMint : escrowNftMint}
                 />
-                <Stack spacing={2} alignItems="center">
-                  {da ? (
-                    <Box
-                      maxWidth={300}
-                      width="100%"
-                      position="relative"
-                      sx={{ aspectRatio: "1 / 1", ":hover": { ".MuiBox-root": { opacity: "1 !important" } } }}
-                    >
-                      <Box
-                        position="absolute"
-                        top={0}
-                        left={0}
-                        right={0}
-                        bottom={0}
-                        sx={{ opacity: 0, transition: "opacity .2s" }}
-                      >
-                        <Center>
-                          <Button
-                            onClick={toggleDestinationNftModalShowing}
-                            variant="contained"
-                            sx={{ whiteSpace: "nowrap" }}
-                          >
-                            Change NFT
-                          </Button>
-                        </Center>
-                      </Box>
-
-                      <img
-                        src={`https://img-cdn.magiceden.dev/rs:fill:400:400:0:0/plain/${da.content?.links?.image}`}
-                        style={{ display: "block", width: "100%" }}
-                      />
-                    </Box>
-                  ) : (
-                    <Box
-                      sx={{
-                        border: "4px dashed",
-                        borderColor: "text.secondary",
-                        aspectRatio: "1 / 1",
-                        borderRadius: 3,
-                      }}
-                      maxWidth={300}
-                      width="100%"
-                      padding={4}
-                    >
-                      <Center>
-                        <Button
-                          onClick={toggleDestinationNftModalShowing}
-                          variant="contained"
-                          sx={{ whiteSpace: "nowrap" }}
-                        >
-                          Choose NFT
-                        </Button>
-                      </Center>
-                    </Box>
-                  )}
-                  {da && <CrowContents da={da} />}
-                </Stack>
-              </Stack>
-            </CardContent>
-          </Card>
-        </Grid>
-      </Grid>
-
-      <Modal
-        open={tokenSelectorShowing}
-        onClose={toggleTokenSelector}
-        sx={{
-          display: "flex",
-          justifyContent: "center",
-          alignItems: "center",
-        }}
-      >
-        <Container
-          sx={{
-            margin: { sm: 10, xs: 0 },
-            height: { sm: "80vh", xs: "100vh" },
-            outline: "none",
-            overflowY: { xs: "auto" },
-          }}
-        >
-          <Card sx={{ height: "100%", overflow: "hidden" }}>
-            <CardContent sx={{ overflow: "auto", height: "100%" }}>
-              <TokenSelector onSelect={onTokenSelect} />
-            </CardContent>
-          </Card>
-        </Container>
-      </Modal>
-
-      <Modal
-        open={nftModalshowing}
-        onClose={toggleNftModalShowing}
-        sx={{
-          display: "flex",
-          justifyContent: "center",
-          alignItems: "center",
-        }}
-      >
-        <Container
-          sx={{
-            margin: { sm: 10, xs: 0 },
-            height: { sm: "80vh", xs: "100vh" },
-            outline: "none",
-            overflowY: { xs: "auto" },
-          }}
-        >
-          <Card sx={{ height: "100%" }}>
-            <CardContent sx={{ height: "100%" }}>
-              <NftSelector onSelect={onNftSelected} close={toggleNftModalShowing} />
-            </CardContent>
-          </Card>
-        </Container>
-      </Modal>
-    </Box>
+              </CardContent>
+            </Card>
+          </Container>
+        </Modal>
+      </Center>
+    </Container>
   )
 }
 
@@ -781,7 +821,6 @@ function TokenSelector({ onSelect }: { onSelect: Function }) {
     }
     ;(async () => {
       const tokens = (await getAllFungiblesByOwner(umi.identity.publicKey)) as TokenWithTokenInfo[]
-      console.log(tokens)
       setTokens(orderBy(tokens, (token) => token.token_info?.price_info?.total_price || 0, "desc"))
     })()
   }, [wallet.publicKey])
@@ -832,7 +871,14 @@ function TokenSelector({ onSelect }: { onSelect: Function }) {
   )
 }
 
-function CrowContents({ da }: { da: DAS.GetAssetResponse }) {
+function CrowContents({
+  da,
+  resolvePromise,
+}: {
+  da: DAS.GetAssetResponse
+  resolvePromise?: (value: void | PromiseLike<void>) => void
+}) {
+  const { fetchAccounts } = useDigitalAssets()
   const [assets, setAssets] = useState<AssetWithPublicKey[]>([])
   const [fetching, setFetching] = useState(false)
   const program = useAnchor()
@@ -868,51 +914,67 @@ function CrowContents({ da }: { da: DAS.GetAssetResponse }) {
       return
     }
     fetchAssets()
-    const listener1 = program.addEventListener("TransferInEvent", fetchAssets)
-    const listener2 = program.addEventListener("TransferOutEvent", fetchAssets)
+    const id = program.provider.connection.onAccountChange(toWeb3JsPublicKey(findCrowPda(publicKey(da.id))), () => {
+      resolvePromise?.()
+      fetchAssets()
+      fetchAccounts()
+    })
 
     return () => {
-      program.removeEventListener(listener1)
-      program.removeEventListener(listener2)
+      program.provider.connection.removeAccountChangeListener(id)
     }
   }, [da.id])
 
+  const {
+    sol = 0,
+    token = 0,
+    nft = 0,
+  } = mapValues(
+    groupBy(assets, (asset) => Object.keys(asset.account.assetType)[0]),
+    (item) => item.length
+  )
+
   return (
     <Stack spacing={2} width="100%">
-      <Typography>Assets</Typography>
+      <Typography textAlign="center" fontWeight="bold" color="primary" textTransform="uppercase">
+        Assets loaded
+      </Typography>
       <Box>
         <Grid container>
-          {assets.map((asset, i) => (
-            <Grid item xs={4} key={i}>
-              <Card>
-                <CardContent>
-                  <Stack spacing={1}>
-                    <Typography textTransform="uppercase" color="primary" fontWeight={700}>
-                      {Object.keys(asset.account.assetType)[0]}
-                    </Typography>
-                    <Typography>From: {shorten(asset.account.authority.toBase58())}</Typography>
-                    {asset.account.assetType.sol && (
-                      <Typography>{asset.account.amount.toNumber() / anchor.web3.LAMPORTS_PER_SOL} SOL</Typography>
-                    )}
-                    <Typography>Vesting: {Object.keys(asset.account.vesting)[0]}</Typography>
-                    <Typography>{dayjs(asset.account.startTime.toNumber() * 1000).fromNow()}</Typography>
-                    {da.ownership.owner === wallet.publicKey?.toBase58() && (
-                      <Button color="primary" variant="outlined">
-                        <Download />
-                      </Button>
-                    )}
-                  </Stack>
-                </CardContent>
-              </Card>
-            </Grid>
-          ))}
+          <Grid item xs={4}>
+            <Typography variant="h6" textAlign="center">
+              {sol}
+              <Typography component="span" variant="body2">
+                {" "}
+                x SOL
+              </Typography>
+            </Typography>
+          </Grid>
+          <Grid item xs={4}>
+            <Typography variant="h6" textAlign="center">
+              {token}
+              <Typography component="span" variant="body2">
+                {" "}
+                x TOKEN
+              </Typography>
+            </Typography>
+          </Grid>
+          <Grid item xs={4}>
+            <Typography variant="h6" textAlign="center">
+              {nft}
+              <Typography component="span" variant="body2">
+                {" "}
+                x NFT
+              </Typography>
+            </Typography>
+          </Grid>
         </Grid>
       </Box>
     </Stack>
   )
 }
 
-function Nft({ nft, select }: { nft: DAS.GetAssetResponse; select: Function }) {
+function Nft({ nft, select }: { nft: DigitalAssetWithCrow; select: Function }) {
   const ref = useRef(null)
   const visible = useOnScreen(ref)
   function handleClick() {
@@ -925,8 +987,19 @@ function Nft({ nft, select }: { nft: DAS.GetAssetResponse; select: Function }) {
         display="flex"
         justifyContent="center"
         alignItems="center"
-        sx={{ display: "flex", justifyContent: "center", alignItems: "center", aspectRatio: "1 / 1" }}
+        sx={{
+          display: "flex",
+          justifyContent: "center",
+          alignItems: "center",
+          aspectRatio: "1 / 1",
+          position: "relative",
+        }}
       >
+        {nft.crow && (
+          <Tooltip title={`${nft.crow.assets?.length || 0} asset${(nft.crow.assets?.length || 0) === 1 ? "" : "s"}`}>
+            <img src="/crow.png" width={25} style={{ position: "absolute", right: 5, top: 5 }} />
+          </Tooltip>
+        )}
         {visible ? (
           <img
             src={
@@ -960,12 +1033,12 @@ function Nft({ nft, select }: { nft: DAS.GetAssetResponse; select: Function }) {
 
 type Collection = { id: string; name: string }
 
-function NftSelector({ onSelect, close }: { onSelect: Function; close: Function }) {
-  const { digitalAssets, fetching } = useDigitalAssets()
+function NftSelector({ onSelect, close, omit }: { onSelect: Function; close: Function; omit?: string }) {
+  const { digitalAssetsWithCrows: digitalAssets, fetching } = useDigitalAssets()
   const [filter, setFilter] = useState("")
-  const [filtered, setFiltered] = useState<DAS.GetAssetResponse[]>([])
+  const [filtered, setFiltered] = useState<DigitalAssetWithCrow[]>([])
   const [collections, setCollections] = useState<Array<Collection>>([])
-  const [collection, setCollection] = useState<Collection | null>(null)
+  const [collection, setCollection] = useState<Collection | null>({ id: "crows" } as any)
 
   useEffect(() => {
     if (!digitalAssets.length) {
@@ -991,7 +1064,12 @@ function NftSelector({ onSelect, close }: { onSelect: Function; close: Function 
     setFiltered([])
     setFiltered(
       orderBy(digitalAssets, (da) => da.content?.metadata.name)
-        .filter((d) => !collection || d.grouping?.find((g) => g.group_value === collection?.id))
+        .filter((d) => d.id !== omit)
+        .filter(
+          (d) =>
+            !collection ||
+            (collection.id === "crows" ? !!d.crow : d.grouping?.find((g) => g.group_value === collection?.id))
+        )
         .filter((da) => {
           if (!filter) {
             return true
@@ -1024,12 +1102,19 @@ function NftSelector({ onSelect, close }: { onSelect: Function; close: Function 
         <Grid container sx={{ flexGrow: 1, overflow: "hidden" }}>
           <Grid item xs={3} height="100%">
             <Stack spacing={2} height="100%" overflow="auto">
-              <Typography>Collections</Typography>
+              <Typography variant="h6">Filter</Typography>
               <Stack>
+                <FormControlLabel
+                  label="Has Crow account"
+                  control={
+                    <Radio checked={collection?.id === "crows"} onClick={() => setCollection({ id: "crows" } as any)} />
+                  }
+                />
                 <FormControlLabel
                   label="Show all"
                   control={<Radio checked={!collection} onClick={() => setCollection(null)} />}
                 />
+
                 {collections.map((c, i) => (
                   <FormControlLabel
                     key={i}

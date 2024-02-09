@@ -6,6 +6,7 @@ import { umi } from "./umi"
 import { Crow } from "../../target/types/crow"
 import { safeFetchToken } from "@metaplex-foundation/mpl-toolbox"
 import { getTokenAccount } from "./pdas"
+import { createSignerFromKeypair } from "@metaplex-foundation/umi"
 
 export async function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms))
@@ -50,3 +51,14 @@ export function assertEqualishLamports(num1: bigint, num2: bigint, msg?: string)
 export async function getTokenAmount(tokenMint: PublicKey, owner: PublicKey): Promise<bigint> {
   return (await safeFetchToken(umi, getTokenAccount(tokenMint, owner)))?.amount || 0n
 }
+
+export const DANDIES_COLLECTION_SIGNER = createSignerFromKeypair(
+  umi,
+  umi.eddsa.createKeypairFromSecretKey(
+    new Uint8Array([
+      28, 127, 4, 68, 83, 107, 119, 245, 87, 122, 132, 15, 19, 6, 68, 155, 200, 25, 56, 122, 45, 245, 46, 220, 105, 164,
+      31, 232, 54, 172, 57, 31, 6, 198, 239, 111, 3, 115, 20, 233, 175, 73, 62, 115, 210, 231, 239, 42, 216, 101, 152,
+      194, 60, 58, 210, 53, 153, 124, 189, 188, 176, 8, 77, 71,
+    ])
+  )
+)

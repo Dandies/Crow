@@ -154,6 +154,13 @@
     "@metaplex-foundation/umi-serializers-encodings" "^0.8.9"
     "@metaplex-foundation/umi-serializers-numbers" "^0.8.9"
 
+"@metaplex-foundation/umi-signer-wallet-adapters@^0.9.1":
+  version "0.9.1"
+  resolved "https://registry.yarnpkg.com/@metaplex-foundation/umi-signer-wallet-adapters/-/umi-signer-wallet-adapters-0.9.1.tgz#2376d0c74ede4e700a76b34da94d97889a1c2281"
+  integrity sha512-J4HYsxHW7L79BzPi/Fr/YwNiqShJPip4ghuXkH4GipYpBfbEWxioIFc6mt4DeV2zxf3JWZjREWo1L6MGrIGcrA==
+  dependencies:
+    "@metaplex-foundation/umi-web3js-adapters" "^0.9.1"
+
 "@metaplex-foundation/umi-transaction-factory-web3js@^0.9.0":
   version "0.9.0"
   resolved "https://registry.yarnpkg.com/@metaplex-foundation/umi-transaction-factory-web3js/-/umi-transaction-factory-web3js-0.9.0.tgz#d72ee5f6dd90e5a8d49b2390e1679ad332bc5210"
@@ -165,6 +172,13 @@
   version "0.9.0"
   resolved "https://registry.yarnpkg.com/@metaplex-foundation/umi-web3js-adapters/-/umi-web3js-adapters-0.9.0.tgz#d3bbf7b2d731f1875d69d4b857c011970d337619"
   integrity sha512-XmwgRYxNVvPrvEQRAN8kiGNurQdVTqcWwa7o/vPBR9HOcGQ0o3WyP9CIY2TlSDwoq10ElwoDkeai/WXY1U4Chg==
+  dependencies:
+    buffer "^6.0.3"
+
+"@metaplex-foundation/umi-web3js-adapters@^0.9.1":
+  version "0.9.1"
+  resolved "https://registry.yarnpkg.com/@metaplex-foundation/umi-web3js-adapters/-/umi-web3js-adapters-0.9.1.tgz#e37cee0b835608044558785c8bf69a5ca92cf341"
+  integrity sha512-O6lQGJFebRM8P67ajvUpuctJ/J39Lylp4wyg8E1tHmFxUsdBC7M9qBixi/WmCiNKgSfVrq6MmiYaba3OSrtqwg==
   dependencies:
     buffer "^6.0.3"
 

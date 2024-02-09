@@ -3,7 +3,7 @@
 import { PublicKey } from "@metaplex-foundation/umi"
 import axios from "axios"
 import { Helius } from "helius-sdk"
-import { PriorityFees } from "../constants"
+import { DANDIES_COLLECTION, PriorityFees } from "../constants"
 
 const client = new Helius(process.env.HELIUS_API_KEY!)
 const url = `https://mainnet.helius-rpc.com/?api-key=${process.env.HELIUS_API_KEY}`
@@ -125,4 +125,31 @@ export async function getPriorityFeesForTx(tx: string, feeLevel: PriorityFees) {
   console.log(data)
 
   return data?.result?.priorityFeeEstimate || 0
+}
+
+async function getDandiesPage(page: number) {
+  return client.rpc.getAssetsByGroup({
+    page,
+    groupKey: "collection",
+    groupValue: DANDIES_COLLECTION,
+    displayOptions: {
+      showGrandTotal: true,
+    },
+  })
+}
+
+export async function getAllDandies() {
+  const result = await getDandiesPage(1)
+  const total = result.grand_total as any as number
+  let das = result.items
+
+  const pages = Math.ceil((total - das.length) / 1000)
+
+  await Promise.all(
+    Array.from(new Array(pages).keys()).map(async (index) => {
+      const result = await getDandiesPage(index + 2)
+      das.push(...result.items)
+    })
+  )
+  return das
 }

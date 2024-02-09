@@ -11,6 +11,10 @@ export type AssetWithPublicKey = {
   account: Asset
 }
 
+export type CrowWithAssets = CrowWithPublicKey & {
+  assets?: AssetWithPublicKey[]
+}
+
 export type Crow = anchor.IdlAccounts<CrowProgram>["crow"]
 export type Asset = anchor.IdlAccounts<CrowProgram>["asset"]
 export type ProgramConfig = anchor.IdlAccounts<CrowProgram>["programConfig"]

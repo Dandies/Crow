@@ -12,11 +12,12 @@ import {
   Theme,
   Typography,
   useMediaQuery,
+  Box,
 } from "@mui/material"
 import { useWallet } from "@solana/wallet-adapter-react"
 import { useWalletModal } from "@solana/wallet-adapter-react-ui"
 import LogoutIcon from "@mui/icons-material/Logout"
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { toast } from "react-hot-toast"
 import { ContentCopy } from "@mui/icons-material"
 import WalletIcon from "@mui/icons-material/Wallet"
@@ -28,6 +29,7 @@ import { shorten } from "../helpers/utils"
 export const WalletButton = ({ authority }: { authority?: string }) => {
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null)
   const open = Boolean(anchorEl)
+  const wallet = useWallet()
   const handleClick = (event: React.MouseEvent<HTMLButtonElement>) => {
     setAnchorEl(event.currentTarget)
   }
@@ -35,7 +37,6 @@ export const WalletButton = ({ authority }: { authority?: string }) => {
     setAnchorEl(null)
   }
 
-  const wallet = useWallet()
   const { setVisible, visible } = useWalletModal()
   const toggleVisible = () => {
     setVisible(!visible)
@@ -75,12 +76,16 @@ export const WalletButton = ({ authority }: { authority?: string }) => {
 
   return (
     <>
-      <Button onClick={wallet.connected ? handleClick : toggleVisible} color="primary" variant="contained">
-        <Stack direction="row" spacing={1} alignItems="center">
-          <AccountBalanceWalletIcon fontSize="small" />
-          <Typography>{wallet.connected ? shorten(wallet.publicKey?.toBase58() as string) : "Connect"}</Typography>
-        </Stack>
-      </Button>
+      <Box>
+        <Button onClick={wallet.connected ? handleClick : toggleVisible} color="primary" variant="contained">
+          <Stack direction="row" spacing={1} alignItems="center">
+            <AccountBalanceWalletIcon fontSize="small" />
+            <Typography variant="body2" textTransform="none">
+              {wallet.connected ? shorten(wallet.publicKey?.toBase58() as string) : "Connect"}
+            </Typography>
+          </Stack>
+        </Button>
+      </Box>
       <Menu
         anchorEl={anchorEl}
         open={open}

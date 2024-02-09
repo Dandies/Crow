@@ -11,7 +11,7 @@ import { PriorityFeesProvider } from "../context/priority-fees"
 export function Providers({ children }: PropsWithChildren) {
   return (
     <Theme>
-      <ConnectionProvider endpoint={process.env.NEXT_PUBLIC_RPC_HOST!}>
+      <ConnectionProvider endpoint={process.env.NEXT_PUBLIC_RPC_HOST!} config={{ commitment: "processed" }}>
         <WalletProvider wallets={[]} autoConnect>
           <WalletModalProvider>
             <UmiProvider>

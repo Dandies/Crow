@@ -166,6 +166,37 @@ export type Crow = {
       ]
     },
     {
+      "name": "init",
+      "accounts": [
+        {
+          "name": "crow",
+          "isMut": true,
+          "isSigner": false
+        },
+        {
+          "name": "nftMint",
+          "isMut": false,
+          "isSigner": false
+        },
+        {
+          "name": "nftMetadata",
+          "isMut": false,
+          "isSigner": false
+        },
+        {
+          "name": "payer",
+          "isMut": true,
+          "isSigner": true
+        },
+        {
+          "name": "systemProgram",
+          "isMut": false,
+          "isSigner": false
+        }
+      ],
+      "args": []
+    },
+    {
       "name": "transferOut",
       "accounts": [
         {
@@ -227,7 +258,7 @@ export type Crow = {
         },
         {
           "name": "nftToken",
-          "isMut": true,
+          "isMut": false,
           "isSigner": false
         },
         {
@@ -385,7 +416,7 @@ export type Crow = {
       "accounts": [
         {
           "name": "programConfig",
-          "isMut": true,
+          "isMut": false,
           "isSigner": false
         },
         {
@@ -900,6 +931,37 @@ export const IDL: Crow = {
       ]
     },
     {
+      "name": "init",
+      "accounts": [
+        {
+          "name": "crow",
+          "isMut": true,
+          "isSigner": false
+        },
+        {
+          "name": "nftMint",
+          "isMut": false,
+          "isSigner": false
+        },
+        {
+          "name": "nftMetadata",
+          "isMut": false,
+          "isSigner": false
+        },
+        {
+          "name": "payer",
+          "isMut": true,
+          "isSigner": true
+        },
+        {
+          "name": "systemProgram",
+          "isMut": false,
+          "isSigner": false
+        }
+      ],
+      "args": []
+    },
+    {
       "name": "transferOut",
       "accounts": [
         {
@@ -961,7 +1023,7 @@ export const IDL: Crow = {
         },
         {
           "name": "nftToken",
-          "isMut": true,
+          "isMut": false,
           "isSigner": false
         },
         {
@@ -1119,7 +1181,7 @@ export const IDL: Crow = {
       "accounts": [
         {
           "name": "programConfig",
-          "isMut": true,
+          "isMut": false,
           "isSigner": false
         },
         {

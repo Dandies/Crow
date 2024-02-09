@@ -8,30 +8,79 @@ import { Pricing } from "./Pricing"
 import { useWallet } from "@solana/wallet-adapter-react"
 import { ADMIN_WALLET } from "../constants"
 
-export function Tabs() {
-  const [pricingShowing, setPricingShowing] = useState(false)
+export function Tabs({
+  vertical = false,
+  onChange = () => {},
+}: {
+  vertical?: boolean
+  onChange?: (...args: any) => any
+}) {
   const wallet = useWallet()
   const path = usePathname()
-  function togglePricing() {
-    setPricingShowing(!pricingShowing)
-  }
 
-  const value = last(path.split("/")) || "wallet"
+  const value = last(path.split("/")) || "crows"
 
   return (
     <Box>
-      <MuiTabs value={value}>
-        <Tab label="My wallet" value="wallet" href="/" LinkComponent={Link} />
-        <Tab label="Transfer" value="transfer" href="/transfer" LinkComponent={Link} />
-        <Tab label="About" value="about" href="/about" LinkComponent={Link} />
-        <Tab label="Pricing" value="pricing" onClick={togglePricing} />
+      <MuiTabs value={value} orientation={vertical ? "vertical" : "horizontal"} onChange={onChange}>
+        <Tab
+          label="My Crows"
+          value="crows"
+          href="/"
+          LinkComponent={Link}
+          sx={{
+            textTransform: "none",
+            "&.Mui-selected": { fontWeight: "bold" },
+            fontSize: vertical ? "24px" : "unset",
+          }}
+        />
+        <Tab
+          label="Transfer"
+          value="transfer"
+          href="/transfer"
+          LinkComponent={Link}
+          sx={{
+            textTransform: "none",
+            "&.Mui-selected": { fontWeight: "bold" },
+            fontSize: vertical ? "24px" : "unset",
+          }}
+        />
+        <Tab
+          label="About"
+          value="about"
+          href="/about"
+          LinkComponent={Link}
+          sx={{
+            textTransform: "none",
+            "&.Mui-selected": { fontWeight: "bold" },
+            fontSize: vertical ? "24px" : "unset",
+          }}
+        />
+        <Tab
+          label="Pricing"
+          value="pricing"
+          href="/pricing"
+          LinkComponent={Link}
+          sx={{
+            textTransform: "none",
+            "&.Mui-selected": { fontWeight: "bold" },
+            fontSize: vertical ? "24px" : "unset",
+          }}
+        />
         {wallet.publicKey?.toBase58() === ADMIN_WALLET && (
-          <Tab label="Admin" value="admin" href="/admin" LinkComponent={Link} />
+          <Tab
+            label="Admin"
+            value="admin"
+            href="/admin"
+            LinkComponent={Link}
+            sx={{
+              textTransform: "none",
+              "&.Mui-selected": { fontWeight: "bold" },
+              fontSize: vertical ? "24px" : "unset",
+            }}
+          />
         )}
       </MuiTabs>
-      <Dialog open={pricingShowing} onClose={() => setPricingShowing(false)} maxWidth="md" fullWidth>
-        <Pricing onClose={() => setPricingShowing(false)} />
-      </Dialog>
     </Box>
   )
 }
