@@ -4,7 +4,7 @@ import { orderBy } from "lodash"
 import { useEffect, useState } from "react"
 import { useUmi } from "../context/umi"
 import { getAllFungiblesByOwner } from "../helpers/helius"
-import { TokenWithTokenInfo } from "../page"
+import { TokenWithTokenInfo } from "../types/types"
 
 export function TokenSelector({ onSelect }: { onSelect: Function }) {
   const [tokens, setTokens] = useState<TokenWithTokenInfo[]>([])

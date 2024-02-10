@@ -24,7 +24,7 @@ export function Tabs({
     <Box>
       <MuiTabs value={value} orientation={vertical ? "vertical" : "horizontal"} onChange={onChange}>
         <Tab
-          label="My Crows"
+          label="Crows"
           value="crows"
           href="/"
           LinkComponent={Link}

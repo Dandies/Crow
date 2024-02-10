@@ -8,13 +8,13 @@ import { useAnchor } from "./anchor"
 import { groupBy } from "lodash"
 import { publicKey } from "@metaplex-foundation/umi"
 import { mapDasWithAccounts } from "../helpers/utils"
+import { useSearchParams } from "next/navigation"
 
 const Context = createContext<
   | {
       dandies: DAS.GetAssetResponse[]
       digitalAssetsWithCrows: DigitalAssetWithCrow[]
       fetching: boolean
-      fetchAssets: Function
       fetchAccounts: Function
       removeNft: Function
     }
@@ -26,6 +26,7 @@ export type DigitalAssetWithCrow = DAS.GetAssetResponse & {
 }
 
 export function DigitalAssetsProvider({ children }: PropsWithChildren) {
+  const search = useSearchParams()
   const [digitalAssetsWithCrows, setDigitalAssetsWithCrows] = useState<DigitalAssetWithCrow[]>([])
   const [dandies, setDandies] = useState<DAS.GetAssetResponse[]>([])
   const [fetching, setFetching] = useState(false)
@@ -45,7 +46,7 @@ export function DigitalAssetsProvider({ children }: PropsWithChildren) {
     )
   }, [digitalAssetsWithCrows])
 
-  async function fetchAssets() {
+  async function fetchAssets(wallet: string) {
     if (fetching) {
       return
     }
@@ -60,7 +61,7 @@ export function DigitalAssetsProvider({ children }: PropsWithChildren) {
     setFetching(true)
 
     worker.postMessage({
-      wallet: wallet.publicKey?.toBase58(),
+      wallet,
     })
   }
 
@@ -78,35 +79,25 @@ export function DigitalAssetsProvider({ children }: PropsWithChildren) {
   }
 
   useEffect(() => {
-    if (!wallet.publicKey) {
+    const fromSearch = search.get("wallet")
+    if (!wallet.publicKey && !fromSearch) {
       setDigitalAssetsWithCrows([])
       return
     }
 
-    fetchAssets()
-  }, [wallet.publicKey])
+    setDigitalAssetsWithCrows([])
+    setFetching(false)
+    setFetchingAccounts(false)
+
+    fetchAssets(fromSearch || wallet.publicKey!.toBase58())
+  }, [wallet.publicKey, search.get("wallet")])
 
   function removeNft(mint: string) {
     setDigitalAssetsWithCrows((das) => das.filter((da) => da.id !== mint))
   }
 
-  useEffect(() => {
-    const id1 = program.addEventListener("TransferInEvent", () => {
-      console.log("TRANSFER IN YAY")
-    })
-
-    const id2 = program.addEventListener("TransferOutEvent", () => {
-      console.log("TRANSFER OUT YAY")
-    })
-
-    return () => {
-      program.removeEventListener(id1)
-      program.removeEventListener(id2)
-    }
-  }, [])
-
   return (
-    <Context.Provider value={{ fetchAssets, removeNft, fetchAccounts, dandies, fetching, digitalAssetsWithCrows }}>
+    <Context.Provider value={{ removeNft, fetchAccounts, dandies, fetching, digitalAssetsWithCrows }}>
       {children}
     </Context.Provider>
   )

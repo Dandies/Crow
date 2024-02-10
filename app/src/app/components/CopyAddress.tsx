@@ -1,4 +1,5 @@
-import { Link, Stack, Tooltip, Typography } from "@mui/material"
+"use client"
+import { Color, Link, Stack, Tooltip, Typography, TypographyVariant } from "@mui/material"
 import { FC, useEffect, useState } from "react"
 import { default as NextLink } from "next/link"
 
@@ -10,9 +11,12 @@ type CopyAddressProps = {
   children: any
   chain?: string
   wallet?: Boolean
+  textAlign?: "right" | "left" | "center"
+  variant?: TypographyVariant
+  color?: any
 }
 
-export const CopyAddress: FC<CopyAddressProps> = ({ children, chain = "solana", wallet }) => {
+export const CopyAddress: FC<CopyAddressProps> = ({ children, chain = "solana", wallet, ...props }) => {
   const [copied, setCopied] = useState(false)
 
   function copyPk() {
@@ -43,13 +47,13 @@ export const CopyAddress: FC<CopyAddressProps> = ({ children, chain = "solana", 
   const target = targets[chain as keyof object] as any
 
   return (
-    <Stack direction="row" spacing={1} justifyContent="flex-end" alignItems="center">
+    <Stack direction="row" spacing={1} alignItems="center" justifyContent="center">
       <Tooltip title={`View on ${target.name}`}>
         <Link href={`${target.url}${children}`} target="_blank">
           <img src={target.image} width="15px" style={{ display: "block" }} />
         </Link>
       </Tooltip>
-      <Typography variant="body2">{shorten(children)}</Typography>
+      <Typography {...props}>{shorten(children)}</Typography>
 
       {copied ? (
         <DoneIcon fontSize="small" color="success" />
