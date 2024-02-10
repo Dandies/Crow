@@ -20,21 +20,19 @@ import "./style.css"
 
 import "@solana/wallet-adapter-react-ui/styles.css"
 import { Toaster } from "react-hot-toast"
-import { PriorityFees } from "./constants"
-import { usePriorityFees } from "./context/priority-fees"
 import { PriorityFeesSelector } from "./components/PriorityFeesSelector"
 
 export const metadata: Metadata = {
   title: "Crow",
   description: "An app for managing NFT based escrow",
+  icons: {
+    icon: "/favicon.ico", // /public path
+  },
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
-      <head>
-        <link rel="shortcut icon" href="/images/favicon.ico" />
-      </head>
       <body
         style={{
           backgroundImage: "url(/tapestry.svg)",
@@ -58,7 +56,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                   "linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.2) 32%, rgba(255,255,255,0) 70%)",
               }}
             >
-              <Container maxWidth={false} sx={{ height: "100%" }}>
+              <Container maxWidth={false} sx={{ height: "100%", overflowY: "auto" }}>
                 {children}
               </Container>
             </Box>

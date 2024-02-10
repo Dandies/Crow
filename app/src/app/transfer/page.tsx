@@ -231,8 +231,6 @@ export default function Create() {
         throw new Error("Digital Asset not found")
       }
 
-      console.log(amount)
-
       const promise = new Promise<void>(async (resolve, reject) => {
         try {
           resolvePromise.current = resolve
@@ -363,7 +361,7 @@ export default function Create() {
   return (
     <Container maxWidth="lg" sx={{ height: "100%" }}>
       <Center>
-        <Grid container spacing={4} overflow={{ xs: "scroll", lg: "hidden" }} height="80vh">
+        <Grid container spacing={4} height="80vh">
           <Grid item xs={12} lg={5.5}>
             <Stack spacing={2} sx={{ height: { lg: "100%", xs: "unset" } }}>
               <Card
