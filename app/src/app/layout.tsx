@@ -21,6 +21,7 @@ import "./style.css"
 import "@solana/wallet-adapter-react-ui/styles.css"
 import { Toaster } from "react-hot-toast"
 import { PriorityFeesSelector } from "./components/PriorityFeesSelector"
+import Favicon from "./components/Favicon"
 
 export const metadata: Metadata = {
   title: "Crow",
@@ -33,6 +34,9 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
+      <head>
+        <Favicon />
+      </head>
       <body
         style={{
           backgroundImage: "url(/tapestry.svg)",
