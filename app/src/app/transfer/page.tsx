@@ -1,6 +1,6 @@
 "use client"
 import * as anchor from "@coral-xyz/anchor"
-import { publicKey, unwrapOptionRecursively } from "@metaplex-foundation/umi"
+import { PublicKey, publicKey, transactionBuilder, unwrapOptionRecursively } from "@metaplex-foundation/umi"
 import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs"
 
 import {
@@ -14,6 +14,8 @@ import {
   InputAdornment,
   Modal,
   Stack,
+  Tab,
+  Tabs,
   TextField,
   Theme,
   ToggleButton,
@@ -50,10 +52,13 @@ import { useSearchParams } from "next/navigation"
 import { NftSelector } from "../components/NftSelector"
 import { TokenSelector } from "../components/TokenSelector"
 import { CrowContents } from "./CrowContext"
+import { compact } from "lodash"
 
 type DigitalAssetWithTokenAndJson = DigitalAssetWithToken & {
   json: JsonMetadata
 }
+
+const ROW_SIZE = 23
 
 export default function Create() {
   const searchParams = useSearchParams()
@@ -78,7 +83,13 @@ export default function Create() {
   const [numIntervals, setNumIntervals] = useState("2")
   const [choosingType, setChoosingType] = useState("source")
   const [tokenSelectorShowing, setTokenSelectorShowing] = useState(false)
+  const [tab, setTab] = useState("single")
   const resolvePromise = useRef<(value: void | PromiseLike<void>) => void>()
+  const textarea = useRef<HTMLDivElement | null>(null)
+  const [rows, setRows] = useState(10)
+  const [hashlist, setHashlist] = useState("")
+  const [hashlistError, setHashlistError] = useState<null | string>(null)
+  const [hashlistRows, setHashlistRows] = useState<PublicKey[]>([])
 
   const [nftModalshowing, setNftModalShowing] = useState(false)
   const wallet = useWallet()
@@ -101,6 +112,37 @@ export default function Create() {
     setChoosingType("destination")
     toggleNftModalShowing()
   }
+
+  useEffect(() => {
+    if (!hashlist) {
+      setHashlistError(null)
+      setHashlistRows([])
+      return
+    }
+
+    try {
+      const json = JSON.parse(hashlist).map((item: any) => publicKey(item))
+      setHashlistRows(json)
+      setHashlistError(null)
+    } catch {
+      setHashlistError(null)
+      const rows = compact(hashlist.split(/[\n,\s]/))
+        .map((row) => {
+          try {
+            return publicKey(row.trim().replace(/["']/g, ""))
+          } catch (err: any) {
+            if (err.name === "InvalidPublicKeyError") {
+              setHashlistError("Invalid public key")
+            }
+            return null
+          }
+        })
+        .filter(Boolean) as PublicKey[]
+
+      console.log(rows)
+      setHashlistRows(rows)
+    }
+  }, [hashlist])
 
   useEffect(() => {
     if (!wallet.publicKey) {
@@ -210,57 +252,62 @@ export default function Create() {
   async function transferIn() {
     try {
       setLoading(true)
-      if (!da) {
-        throw new Error("Digital Asset not found")
-      }
 
-      const promise = new Promise<void>(async (resolve, reject) => {
-        try {
-          resolvePromise.current = resolve
-          const serialized = await getDistributeTx({
-            payerPk: umi.identity.publicKey,
-            assetId: da.id,
-            type,
-            vestingType,
-            escrowNftPk: escrowDa?.id,
-            numIntervals: Number(numIntervals),
-            amount: String(Number(amount) * Number(factor)),
-            tokenPk: token?.publicKey,
-            startDate: startDate?.unix(),
-            endDate: endDate?.unix(),
-            feeLevel,
-          })
-
-          const tx = umi.transactions.deserialize(base58.decode(serialized))
-          const signed = await umi.identity.signTransaction(tx)
-          const sig = await umi.rpc.sendTransaction(signed, { skipPreflight: true })
-          const conf = await umi.rpc.confirmTransaction(sig, {
-            strategy: {
-              type: "blockhash",
-              ...(await umi.rpc.getLatestBlockhash()),
-            },
-          })
-
-          if (conf.value.err) {
-            throw new Error("Error confirming tx")
-          }
-
-          resolve()
-        } catch (err) {
-          reject(err)
+      if (tab === "single") {
+        if (!da) {
+          throw new Error("Digital Asset not found")
         }
-      })
 
-      toast.promise(promise, {
-        loading: "Transferring into Crow",
-        success: "Transferred successfully",
-        error: "Error transferring",
-      })
+        const promise = new Promise<void>(async (resolve, reject) => {
+          try {
+            resolvePromise.current = resolve
+            const serialized = await getDistributeTx({
+              payerPk: umi.identity.publicKey,
+              assetId: da.id,
+              type,
+              vestingType,
+              escrowNftPk: escrowDa?.id,
+              numIntervals: Number(numIntervals),
+              amount: String(Number(amount) * Number(factor)),
+              tokenPk: token?.publicKey,
+              startDate: startDate?.unix(),
+              endDate: endDate?.unix(),
+              feeLevel,
+            })
 
-      await promise
-      cancel()
-      if (type === "nft") {
-        removeNft(escrowNftMint)
+            const tx = umi.transactions.deserialize(base58.decode(serialized))
+            const signed = await umi.identity.signTransaction(tx)
+            const sig = await umi.rpc.sendTransaction(signed, { skipPreflight: true })
+            const conf = await umi.rpc.confirmTransaction(sig, {
+              strategy: {
+                type: "blockhash",
+                ...(await umi.rpc.getLatestBlockhash()),
+              },
+            })
+
+            if (conf.value.err) {
+              throw new Error("Error confirming tx")
+            }
+
+            resolve()
+          } catch (err) {
+            reject(err)
+          }
+        })
+
+        toast.promise(promise, {
+          loading: "Transferring into Crow",
+          success: "Transferred successfully",
+          error: "Error transferring",
+        })
+
+        await promise
+        cancel()
+        if (type === "nft") {
+          removeNft(escrowNftMint)
+        }
+      } else {
+        let tx = transactionBuilder().add(await Promise.all(hashlistRows.map(async (nftMint) => {})))
       }
     } catch (err: any) {
       console.error(err.stack)
@@ -296,6 +343,29 @@ export default function Create() {
     }
     setNftModalShowing(false)
   }
+
+  function resizeTextarea() {
+    if (!textarea.current) {
+      return
+    }
+    if (isMd) {
+      setRows(20)
+      return
+    }
+    const height = textarea.current.offsetHeight - 120
+    const rows = height / ROW_SIZE
+    setRows(rows)
+  }
+
+  useEffect(() => {
+    resizeTextarea()
+
+    window.onresize = resizeTextarea
+
+    return () => {
+      window.onresize = null
+    }
+  }, [tab])
 
   useEffect(() => {
     if (!escrowDa) {
@@ -343,10 +413,16 @@ export default function Create() {
     )
   }
 
+  useEffect(() => {
+    if (tab === "hashlist" && type === "nft") {
+      setType("token")
+    }
+  }, [tab, type])
+
   return (
     <Container maxWidth="lg" sx={{ height: "100%" }}>
       <Center>
-        <Grid container spacing={4} overflow={{ xs: "scroll", lg: "hidden" }} height="80vh">
+        <Grid container spacing={4} height="80vh">
           <Grid item xs={12} lg={5.5}>
             <Stack spacing={2} sx={{ height: { lg: "100%", xs: "unset" } }}>
               <Card
@@ -376,7 +452,9 @@ export default function Create() {
                       >
                         <ToggleButton value="token">Token</ToggleButton>
                         <ToggleButton value="sol">SOL</ToggleButton>
-                        <ToggleButton value="nft">NFT</ToggleButton>
+                        <ToggleButton value="nft" disabled={tab === "hashlist"}>
+                          NFT
+                        </ToggleButton>
                       </ToggleButtonGroup>
                     </Stack>
                     {type === "token" && (
@@ -637,75 +715,102 @@ export default function Create() {
               >
                 <Box sx={{ backgroundColor: "primary.main" }} p={1}>
                   <Typography variant="h5" fontWeight="bold" textTransform="uppercase" textAlign="center" color="black">
-                    Destination NFT
+                    Destination {tab === "single" ? "NFT" : "NFTs"}
                   </Typography>
                 </Box>
                 <CardContent sx={{ height: "100%", overflow: "auto" }}>
-                  <Stack spacing={2}>
-                    <TextField
-                      label="NFT Mint"
-                      value={nftMint}
-                      onChange={(e) => setNftMint(e.target.value)}
-                      error={!!nftMintError}
-                      helperText={nftMintError}
-                    />
-                    <Stack spacing={2} alignItems="center">
-                      {da ? (
-                        <Box
-                          maxWidth={300}
-                          width="100%"
-                          position="relative"
-                          sx={{ aspectRatio: "1 / 1", ":hover": { ".MuiBox-root": { opacity: "1 !important" } } }}
-                        >
-                          <Box
-                            position="absolute"
-                            top={0}
-                            left={0}
-                            right={0}
-                            bottom={0}
-                            sx={{ opacity: 0, transition: "opacity .2s" }}
-                          >
-                            <Center>
-                              <Button
-                                onClick={toggleDestinationNftModalShowing}
-                                variant="contained"
-                                sx={{ whiteSpace: "nowrap" }}
-                              >
-                                Change NFT
-                              </Button>
-                            </Center>
-                          </Box>
-
-                          <img
-                            src={`https://img-cdn.magiceden.dev/rs:fill:400:400:0:0/plain/${da.content?.links?.image}`}
-                            style={{ display: "block", width: "100%" }}
-                          />
-                        </Box>
-                      ) : (
-                        <Box
-                          sx={{
-                            border: "4px dashed",
-                            borderColor: "text.secondary",
-                            aspectRatio: "1 / 1",
-                            borderRadius: 3,
-                          }}
-                          maxWidth={300}
-                          width="100%"
-                          padding={4}
-                        >
-                          <Center>
-                            <Button
-                              onClick={toggleDestinationNftModalShowing}
-                              variant="contained"
-                              sx={{ whiteSpace: "nowrap" }}
+                  <Stack spacing={2} height="100%">
+                    <Tabs value={tab} onChange={(e, tab) => setTab(tab)}>
+                      <Tab value="single" label="Single" />
+                      <Tab value="hashlist" label="Multiple" />
+                    </Tabs>
+                    {tab === "single" ? (
+                      <Stack spacing={2}>
+                        <TextField
+                          label="NFT Mint"
+                          value={nftMint}
+                          onChange={(e) => setNftMint(e.target.value)}
+                          error={!!nftMintError}
+                          helperText={nftMintError}
+                        />
+                        <Stack spacing={2} alignItems="center">
+                          {da ? (
+                            <Box
+                              maxWidth={300}
+                              width="100%"
+                              position="relative"
+                              sx={{ aspectRatio: "1 / 1", ":hover": { ".MuiBox-root": { opacity: "1 !important" } } }}
                             >
-                              Choose NFT
-                            </Button>
-                          </Center>
-                        </Box>
-                      )}
-                      {da && <CrowContents da={da} resolvePromise={resolvePromise.current} />}
-                    </Stack>
+                              <Box
+                                position="absolute"
+                                top={0}
+                                left={0}
+                                right={0}
+                                bottom={0}
+                                sx={{ opacity: 0, transition: "opacity .2s" }}
+                              >
+                                <Center>
+                                  <Button
+                                    onClick={toggleDestinationNftModalShowing}
+                                    variant="contained"
+                                    sx={{ whiteSpace: "nowrap" }}
+                                  >
+                                    Change NFT
+                                  </Button>
+                                </Center>
+                              </Box>
+
+                              <img
+                                src={`https://img-cdn.magiceden.dev/rs:fill:400:400:0:0/plain/${da.content?.links?.image}`}
+                                style={{ display: "block", width: "100%" }}
+                              />
+                            </Box>
+                          ) : (
+                            <Box
+                              sx={{
+                                border: "4px dashed",
+                                borderColor: "text.secondary",
+                                aspectRatio: "1 / 1",
+                                borderRadius: 3,
+                              }}
+                              maxWidth={300}
+                              width="100%"
+                              padding={4}
+                            >
+                              <Center>
+                                <Button
+                                  onClick={toggleDestinationNftModalShowing}
+                                  variant="contained"
+                                  sx={{ whiteSpace: "nowrap" }}
+                                >
+                                  Choose NFT
+                                </Button>
+                              </Center>
+                            </Box>
+                          )}
+                          {da && <CrowContents da={da} resolvePromise={resolvePromise.current} />}
+                        </Stack>
+                      </Stack>
+                    ) : (
+                      <Stack spacing={2} height="100%">
+                        <TextField
+                          multiline={true}
+                          error={!!hashlistError}
+                          helperText={hashlistError}
+                          rows={15}
+                          maxRows={15}
+                          fullWidth
+                          value={hashlist}
+                          onChange={(e) => setHashlist(e.target.value)}
+                          placeholder="Enter either a wallet per line, or a json hashlist"
+                          InputLabelProps={{
+                            shrink: true,
+                          }}
+                        />
+
+                        <Typography variant="body2">All wallets will receive an equal share</Typography>
+                      </Stack>
+                    )}
                   </Stack>
                 </CardContent>
               </Card>
