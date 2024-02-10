@@ -86,8 +86,6 @@ export function DigitalAssetsProvider({ children }: PropsWithChildren) {
     }
 
     setDigitalAssetsWithCrows([])
-    setFetching(false)
-    setFetchingAccounts(false)
 
     fetchAssets(fromSearch || wallet.publicKey!.toBase58())
   }, [wallet.publicKey, search.get("wallet")])

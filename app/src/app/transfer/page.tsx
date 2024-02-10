@@ -231,6 +231,8 @@ export default function Create() {
         throw new Error("Digital Asset not found")
       }
 
+      console.log(amount)
+
       const promise = new Promise<void>(async (resolve, reject) => {
         try {
           resolvePromise.current = resolve

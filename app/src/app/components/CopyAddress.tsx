@@ -14,6 +14,7 @@ type CopyAddressProps = {
   textAlign?: "right" | "left" | "center"
   variant?: TypographyVariant
   color?: any
+  fontWeight?: any
 }
 
 export const CopyAddress: FC<CopyAddressProps> = ({ children, chain = "solana", wallet, ...props }) => {
@@ -53,7 +54,9 @@ export const CopyAddress: FC<CopyAddressProps> = ({ children, chain = "solana", 
           <img src={target.image} width="15px" style={{ display: "block" }} />
         </Link>
       </Tooltip>
-      <Typography {...props}>{shorten(children)}</Typography>
+      <Typography component="span" {...props}>
+        {shorten(children)}
+      </Typography>
 
       {copied ? (
         <DoneIcon fontSize="small" color="success" />

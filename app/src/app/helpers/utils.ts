@@ -8,7 +8,6 @@ import { AssetWithPublicKey, CrowWithPublicKey } from "../types/types"
 import { findCrowPda } from "./pdas"
 
 export function shorten(address: string) {
-  console.log({ address })
   if (!address) {
     return
   }
