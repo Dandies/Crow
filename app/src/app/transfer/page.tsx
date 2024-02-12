@@ -51,7 +51,9 @@ import { WalletButton } from "../components/WalletButton"
 import { useSearchParams } from "next/navigation"
 import { NftSelector } from "../components/NftSelector"
 import { TokenSelector } from "../components/TokenSelector"
-import { CrowContents } from "./CrowContext"
+import { CrowContents } from "./CrowContents"
+import { useAnchor } from "../context/anchor"
+import { toWeb3JsPublicKey } from "@metaplex-foundation/umi-web3js-adapters"
 import { compact } from "lodash"
 
 type DigitalAssetWithTokenAndJson = DigitalAssetWithToken & {
@@ -90,6 +92,7 @@ export default function Create() {
   const [hashlist, setHashlist] = useState("")
   const [hashlistError, setHashlistError] = useState<null | string>(null)
   const [hashlistRows, setHashlistRows] = useState<PublicKey[]>([])
+  const program = useAnchor()
 
   const [nftModalshowing, setNftModalShowing] = useState(false)
   const wallet = useWallet()
@@ -155,24 +158,38 @@ export default function Create() {
     })()
   }, [wallet.publicKey])
 
+  async function fetchToken(pk: PublicKey) {
+    const token = await fetchDigitalAssetWithAssociatedToken(umi, pk, umi.identity.publicKey)
+    setToken(token)
+  }
+
   useEffect(() => {
     if (!tokenMint) {
       setTokenMintError(null)
       setToken(null)
       return
     }
-    ;(async () => {
-      try {
-        const pk = publicKey(tokenMint)
-        const token = await fetchDigitalAssetWithAssociatedToken(umi, pk, umi.identity.publicKey)
-        setTokenMintError(null)
-        setToken(token)
-      } catch (err: any) {
-        console.error(err)
-        setTokenMintError(err.message)
-      }
-    })()
+    try {
+      const pk = publicKey(tokenMint)
+      fetchToken(pk)
+      setTokenMintError(null)
+    } catch (err: any) {
+      console.error(err)
+      setTokenMintError(err.message)
+    }
   }, [tokenMint])
+
+  useEffect(() => {
+    if (!token?.token.publicKey) {
+      return
+    }
+    const id = program.provider.connection.onAccountChange(toWeb3JsPublicKey(token.token.publicKey), () =>
+      fetchToken(token.publicKey)
+    )
+    return () => {
+      program.provider.connection.removeAccountChangeListener(id)
+    }
+  }, [token?.token.publicKey])
 
   useEffect(() => {
     if (!nftMint) {
@@ -307,7 +324,7 @@ export default function Create() {
           removeNft(escrowNftMint)
         }
       } else {
-        let tx = transactionBuilder().add(await Promise.all(hashlistRows.map(async (nftMint) => {})))
+        // let tx = transactionBuilder().add(await Promise.all(hashlistRows.map(async (nftMint) => {})))
       }
     } catch (err: any) {
       console.error(err.stack)
@@ -325,12 +342,9 @@ export default function Create() {
   const factor = type === "token" && token ? 10n ** BigInt(token.mint.decimals) : 10n ** 9n
 
   function cancel() {
-    setType("token")
     setToken(null)
     setTokenMint("")
     setAmount("")
-    setNftMint("")
-    setDa(null)
     setEscrowNftMint("")
     setEscrowDa(null)
   }
@@ -400,6 +414,12 @@ export default function Create() {
     setTokenSelectorShowing(false)
   }
 
+  useEffect(() => {
+    if (tab === "hashlist" && type === "nft") {
+      setType("token")
+    }
+  }, [tab, type])
+
   if (!wallet.publicKey) {
     return (
       <Center>
@@ -412,12 +432,6 @@ export default function Create() {
       </Center>
     )
   }
-
-  useEffect(() => {
-    if (tab === "hashlist" && type === "nft") {
-      setType("token")
-    }
-  }, [tab, type])
 
   return (
     <Container maxWidth="lg" sx={{ height: "100%" }}>

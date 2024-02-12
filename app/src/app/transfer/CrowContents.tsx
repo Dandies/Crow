@@ -1,6 +1,6 @@
 import { publicKey } from "@metaplex-foundation/umi"
 import { toWeb3JsPublicKey } from "@metaplex-foundation/umi-web3js-adapters"
-import { Stack, Typography, Box, Grid } from "@mui/material"
+import { Link as MuiLink, Stack, Typography, Box, Grid, Button } from "@mui/material"
 import { useWallet } from "@solana/wallet-adapter-react"
 import { DAS } from "helius-sdk"
 import { mapValues, groupBy } from "lodash"
@@ -8,7 +8,8 @@ import { useState, useEffect } from "react"
 import { useAnchor } from "../context/anchor"
 import { useDigitalAssets } from "../context/digital-assets"
 import { findCrowPda } from "../helpers/pdas"
-import { AssetWithPublicKey } from "../types/types"
+import { AssetWithPublicKey, CrowWithPublicKey } from "../types/types"
+import Link from "next/link"
 
 export function CrowContents({
   da,
@@ -109,6 +110,9 @@ export function CrowContents({
           </Grid>
         </Grid>
       </Box>
+      <MuiLink component={Link} href={`/crow/${da.id}`} sx={{ textAlign: "center" }}>
+        View crow account
+      </MuiLink>
     </Stack>
   )
 }

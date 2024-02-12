@@ -8,6 +8,7 @@ import { AssetWithPublicKey, CrowWithPublicKey } from "../types/types"
 import { findCrowPda } from "./pdas"
 
 export function shorten(address: string) {
+  console.log({ address })
   if (!address) {
     return
   }
@@ -64,18 +65,15 @@ export function mapDasWithAccounts(
     if (crow) {
       crow.publicKey = crow.publicKey.toBase58()
       crow.account.nftMint = crow.account.nftMint.toBase58()
-      crow.assets = orderBy(
-        assetDict[pda]?.map((asset) => {
-          return {
-            publicKey: asset.publicKey.toBase58(),
-            account: mapValues(asset.account, (item) =>
-              item instanceof BN ? item.toString() : item instanceof anchor.web3.PublicKey ? item.toBase58() : item
-            ),
-          }
-        }),
-        (item) => Number(item.account.startTime),
-        "desc"
-      )
+      const mapped = assetDict[pda]?.map((asset) => {
+        return {
+          publicKey: asset.publicKey.toBase58(),
+          account: mapValues(asset.account, (item) =>
+            item instanceof BN ? item.toString() : item instanceof anchor.web3.PublicKey ? item.toBase58() : item
+          ),
+        }
+      })
+      crow.assets = orderBy(mapped, (item) => Number(item.account.startTime), "asc")
     }
     return {
       ...da,
