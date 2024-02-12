@@ -51,9 +51,10 @@ export function Client({ daWithCrow: initialDaWithCrow }: { daWithCrow: DigitalA
             <Typography textAlign="center" fontWeight="bold" variant="h3">
               Crow Account
             </Typography>
-            <CopyAddress textAlign="right" variant="h6" color="primary">
-              {daWithCrow?.crow?.publicKey}
-            </CopyAddress>
+            <Typography variant="h6" color="primary" textAlign="center">
+              {daWithCrow.crow ? <CopyAddress>{daWithCrow?.crow?.publicKey}</CopyAddress> : "No crow account"}
+            </Typography>
+
             {daWithCrow && (
               <Stack
                 direction={{ xs: "column", sm: "row" }}
@@ -76,7 +77,7 @@ export function Client({ daWithCrow: initialDaWithCrow }: { daWithCrow: DigitalA
                   </Stack>
                 </Stack>
                 <Box>
-                  <Button variant="contained" LinkComponent={Link} href={`/transfer?nft=${daWithCrow.id}`}>
+                  <Button variant="contained" LinkComponent={Link} href={`/load?nft=${daWithCrow.id}`}>
                     Add assets to Crow
                   </Button>
                 </Box>
@@ -100,11 +101,7 @@ export function Client({ daWithCrow: initialDaWithCrow }: { daWithCrow: DigitalA
                 <Center>
                   <Stack alignItems="center" spacing={2}>
                     <Typography fontWeight="bold">Crow account empty</Typography>
-                    <Button
-                      component={Link}
-                      href={`/transfer?nft=${daWithCrow.crow?.account.nftMint}`}
-                      variant="contained"
-                    >
+                    <Button component={Link} href={`/load?nft=${daWithCrow.crow?.account.nftMint}`} variant="contained">
                       Add something
                     </Button>
                   </Stack>

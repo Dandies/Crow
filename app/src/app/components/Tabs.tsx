@@ -3,8 +3,6 @@ import { Tab, Tabs as MuiTabs, Box, Dialog } from "@mui/material"
 import { last } from "lodash"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { useState } from "react"
-import { Pricing } from "./Pricing"
 import { useWallet } from "@solana/wallet-adapter-react"
 import { ADMIN_WALLET } from "../constants"
 
@@ -35,9 +33,9 @@ export function Tabs({
           }}
         />
         <Tab
-          label="Transfer"
-          value="transfer"
-          href="/transfer"
+          label="Load"
+          value="load"
+          href="/load"
           LinkComponent={Link}
           sx={{
             textTransform: "none",

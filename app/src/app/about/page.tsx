@@ -14,7 +14,7 @@ export default function About() {
                     What is Crow?
                   </Typography>
                   <Typography textAlign="center" fontWeight={100} color="primary" variant="h5">
-                    Asset storage, sharing and es<strong>crow</strong> via NFTs
+                    Asset storage, sharing and es<strong>crow</strong> via NFT ownership
                   </Typography>
                 </Stack>
                 <Typography color="primary" fontWeight="bold" fontSize="20px">
