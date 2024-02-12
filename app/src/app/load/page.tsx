@@ -14,6 +14,8 @@ import {
   InputAdornment,
   Modal,
   Stack,
+  Tab,
+  Tabs,
   TextField,
   Theme,
   ToggleButton,
@@ -57,7 +59,7 @@ type DigitalAssetWithTokenAndJson = DigitalAssetWithToken & {
   json: JsonMetadata
 }
 
-export default function Create() {
+export default function Load() {
   const searchParams = useSearchParams()
   const { fetchAccounts, removeNft } = useDigitalAssets()
   const { feeLevel } = usePriorityFees()
@@ -81,6 +83,10 @@ export default function Create() {
   const [choosingType, setChoosingType] = useState("source")
   const [tokenSelectorShowing, setTokenSelectorShowing] = useState(false)
   const resolvePromise = useRef<(value: void | PromiseLike<void>) => void>()
+  const [hashlist, setHashlist] = useState("")
+  const [hashlistError, setHashlistError] = useState<string | null>(null)
+  const [nftMints, setNftMints] = useState<PublicKey>([])
+  const [tab, setTab] = useState("single")
   const program = useAnchor()
 
   const [nftModalshowing, setNftModalShowing] = useState(false)
@@ -104,6 +110,26 @@ export default function Create() {
     setChoosingType("destination")
     toggleNftModalShowing()
   }
+
+  useEffect(() => {
+    if (!hashlist) {
+      setHashlistError(null)
+      return
+    }
+
+    try {
+      const json = JSON.parse(hashlist)
+      try {
+        json.forEach((item: string) => publicKey(item))
+        setNftMints(json)
+      } catch {
+        setHashlistError("Invalid mint(s)")
+      }
+    } catch {
+      const rows = hashlist.split(/[\s,]+/g).map((item) => item.trim().replace(/[\"\']/g, ""))
+      console.log(rows)
+    }
+  }, [hashlist])
 
   useEffect(() => {
     if (!wallet.publicKey) {
@@ -652,75 +678,102 @@ export default function Create() {
               >
                 <Box sx={{ backgroundColor: "primary.main" }} p={1}>
                   <Typography variant="h5" fontWeight="bold" textTransform="uppercase" textAlign="center" color="black">
-                    Destination NFT
+                    Destination NFT{tab === "multiple" && "s"}
                   </Typography>
                 </Box>
                 <CardContent sx={{ height: "100%", overflow: "auto" }}>
                   <Stack spacing={2}>
-                    <TextField
-                      label="NFT Mint"
-                      value={nftMint}
-                      onChange={(e) => setNftMint(e.target.value)}
-                      error={!!nftMintError}
-                      helperText={nftMintError}
-                    />
-                    <Stack spacing={2} alignItems="center">
-                      {da ? (
-                        <Box
-                          maxWidth={300}
-                          width="100%"
-                          position="relative"
-                          sx={{ aspectRatio: "1 / 1", ":hover": { ".MuiBox-root": { opacity: "1 !important" } } }}
-                        >
-                          <Box
-                            position="absolute"
-                            top={0}
-                            left={0}
-                            right={0}
-                            bottom={0}
-                            sx={{ opacity: 0, transition: "opacity .2s" }}
-                          >
-                            <Center>
-                              <Button
-                                onClick={toggleDestinationNftModalShowing}
-                                variant="contained"
-                                sx={{ whiteSpace: "nowrap" }}
-                              >
-                                Change NFT
-                              </Button>
-                            </Center>
-                          </Box>
-
-                          <img
-                            src={`https://img-cdn.magiceden.dev/rs:fill:400:400:0:0/plain/${da.content?.links?.image}`}
-                            style={{ display: "block", width: "100%" }}
-                          />
-                        </Box>
-                      ) : (
-                        <Box
-                          sx={{
-                            border: "4px dashed",
-                            borderColor: "text.secondary",
-                            aspectRatio: "1 / 1",
-                            borderRadius: 3,
-                          }}
-                          maxWidth={300}
-                          width="100%"
-                          padding={4}
-                        >
-                          <Center>
-                            <Button
-                              onClick={toggleDestinationNftModalShowing}
-                              variant="contained"
-                              sx={{ whiteSpace: "nowrap" }}
+                    <Tabs value={tab} onChange={(e, tab) => setTab(tab)}>
+                      <Tab value="single" label="Single" />
+                      <Tab value="multiple" label="Multiple" />
+                    </Tabs>
+                    {tab === "multiple" && (
+                      <TextField
+                        multiline
+                        fullWidth
+                        error={!!hashlistError}
+                        label="Hashlist"
+                        value={hashlist}
+                        onChange={(e) => setHashlist(e.target.value)}
+                        rows={15}
+                        InputProps={{
+                          sx: {
+                            fontFamily: "monospace !important",
+                            whiteSpace: "prewrap",
+                          },
+                          spellCheck: false,
+                        }}
+                        helperText={hashlistError}
+                      />
+                    )}
+                    {tab === "single" && (
+                      <Stack spacing={2}>
+                        <TextField
+                          label="NFT Mint"
+                          value={nftMint}
+                          onChange={(e) => setNftMint(e.target.value)}
+                          error={!!nftMintError}
+                          helperText={nftMintError}
+                        />
+                        <Stack spacing={2} alignItems="center">
+                          {da ? (
+                            <Box
+                              maxWidth={300}
+                              width="100%"
+                              position="relative"
+                              sx={{ aspectRatio: "1 / 1", ":hover": { ".MuiBox-root": { opacity: "1 !important" } } }}
                             >
-                              Choose NFT
-                            </Button>
-                          </Center>
-                        </Box>
-                      )}
-                      {da && <CrowContents da={da} resolvePromise={resolvePromise.current} />}
-                    </Stack>
+                              <Box
+                                position="absolute"
+                                top={0}
+                                left={0}
+                                right={0}
+                                bottom={0}
+                                sx={{ opacity: 0, transition: "opacity .2s" }}
+                              >
+                                <Center>
+                                  <Button
+                                    onClick={toggleDestinationNftModalShowing}
+                                    variant="contained"
+                                    sx={{ whiteSpace: "nowrap" }}
+                                  >
+                                    Change NFT
+                                  </Button>
+                                </Center>
+                              </Box>
+
+                              <img
+                                src={`https://img-cdn.magiceden.dev/rs:fill:400:400:0:0/plain/${da.content?.links?.image}`}
+                                style={{ display: "block", width: "100%" }}
+                              />
+                            </Box>
+                          ) : (
+                            <Box
+                              sx={{
+                                border: "4px dashed",
+                                borderColor: "text.secondary",
+                                aspectRatio: "1 / 1",
+                                borderRadius: 3,
+                              }}
+                              maxWidth={300}
+                              width="100%"
+                              padding={4}
+                            >
+                              <Center>
+                                <Button
+                                  onClick={toggleDestinationNftModalShowing}
+                                  variant="contained"
+                                  sx={{ whiteSpace: "nowrap" }}
+                                >
+                                  Choose NFT
+                                </Button>
+                              </Center>
+                            </Box>
+                          )}
+                          {da && <CrowContents da={da} resolvePromise={resolvePromise.current} />}
+                        </Stack>
+                      </Stack>
+                    )}
                   </Stack>
                 </CardContent>
               </Card>
