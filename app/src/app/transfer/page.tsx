@@ -44,7 +44,7 @@ import { ArrowForwardIos } from "@mui/icons-material"
 import { Center } from "../components/Center"
 import { getDigitalAsset } from "../helpers/helius"
 import { dayjs } from "../helpers/dayjs"
-import { getDistributeTx } from "../helpers/transactions"
+import { getDistributeTx, getDistributeTxs } from "../helpers/transactions"
 import base58 from "bs58"
 import { usePriorityFees } from "../context/priority-fees"
 import { WalletButton } from "../components/WalletButton"
@@ -271,13 +271,14 @@ export default function Create() {
       setLoading(true)
 
       if (tab === "single") {
-        if (!da) {
-          throw new Error("Digital Asset not found")
-        }
-
         const promise = new Promise<void>(async (resolve, reject) => {
           try {
             resolvePromise.current = resolve
+
+            if (!da) {
+              throw new Error("Destination NFT not selected")
+            }
+
             const serialized = await getDistributeTx({
               payerPk: umi.identity.publicKey,
               assetId: da.id,
@@ -324,7 +325,20 @@ export default function Create() {
           removeNft(escrowNftMint)
         }
       } else {
-        // let tx = transactionBuilder().add(await Promise.all(hashlistRows.map(async (nftMint) => {})))
+        const txs = await getDistributeTxs({
+          payerPk: umi.identity.publicKey,
+          assetIds: hashlistRows,
+          type,
+          vestingType,
+          numIntervals: Number(numIntervals),
+          amount: String(Number(amount) * Number(factor)),
+          tokenPk: token?.publicKey,
+          startDate: startDate?.unix(),
+          endDate: endDate?.unix(),
+          feeLevel,
+        })
+
+        console.log(txs)
       }
     } catch (err: any) {
       console.error(err.stack)

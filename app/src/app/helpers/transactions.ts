@@ -282,3 +282,31 @@ export async function getDistributeTx({
     return encoded
   }
 }
+
+export async function getDistributeTxs({
+  payerPk,
+  assetIds,
+  type,
+  vestingType,
+  escrowNftPk,
+  numIntervals,
+  amount,
+  tokenPk,
+  startDate,
+  endDate,
+  feeLevel,
+}: {
+  payerPk: string
+  assetIds: string[]
+  type: string
+  vestingType: string
+  escrowNftPk?: string
+  numIntervals?: number
+  amount?: string
+  tokenPk?: string
+  startDate?: number
+  endDate?: number
+  feeLevel?: PriorityFees
+}) {
+  return []
+}

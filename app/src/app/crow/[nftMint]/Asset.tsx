@@ -20,8 +20,18 @@ import SolIcon from "@/../public/sol.svg"
 import TokenIcon from "@/../public/token.svg"
 import NftIcon from "@/../public/nft.svg"
 import { dayjs } from "@/app/helpers/dayjs"
+import { useParams } from "next/navigation"
 
-export function Asset({ asset, owner }: { asset: AssetWithPublicKey; owner: string }) {
+export function Asset({
+  asset,
+  owner,
+  fetchDigitalAsset,
+}: {
+  asset: AssetWithPublicKey
+  owner: string
+  fetchDigitalAsset: Function
+}) {
+  const { nftMint } = useParams()
   const { fetchAccounts } = useDigitalAssets()
   const [loading, setLoading] = useState(false)
   const { feeLevel } = usePriorityFees()
@@ -126,6 +136,7 @@ export function Asset({ asset, owner }: { asset: AssetWithPublicKey; owner: stri
     } catch (e: any) {
       console.error(e.message)
     } finally {
+      fetchDigitalAsset(nftMint)
       fetchAccounts()
       setLoading(false)
     }
@@ -175,26 +186,36 @@ export function Asset({ asset, owner }: { asset: AssetWithPublicKey; owner: stri
                   {token?.content?.metadata.name}
                 </Typography>
                 {(asset.account.vesting.linear || asset.account.vesting.intervals) && (
-                  <Typography textAlign="center">
-                    Claimed: {(Number(asset.account.claimed) / factor).toLocaleString()}
+                  <Typography textAlign="center" fontWeight={100}>
+                    Claimed:{" "}
+                    <Typography fontWeight="bold" component="span">
+                      {(Number(asset.account.claimed) / factor).toLocaleString()}
+                    </Typography>
                   </Typography>
                 )}
 
                 {asset.account.vesting.linear && (
-                  <Typography textAlign="center">
-                    Linear vesting until{" "}
-                    {dayjs(Number(asset.account?.endTime || 0) * 1000).format("DD/MM/YYYY HH:mm:ss")}
+                  <Typography textAlign="center" fontWeight={100}>
+                    Linear vesting until:{" "}
+                    <Typography fontWeight="bold">
+                      {dayjs(Number(asset.account?.endTime || 0) * 1000).format("YYYY/MM/DD HH:mm:ss")}
+                    </Typography>
                   </Typography>
                 )}
                 {asset.account.vesting.intervals && (
-                  <Typography textAlign="center">
+                  <Typography textAlign="center" fontWeight={100}>
                     Vesting over {asset.account.vesting.intervals.numIntervals} intervals until{" "}
-                    {dayjs(Number(asset.account?.endTime || 0) * 1000).format("DD/MM/YYYY HH:mm:ss")}
+                    <Typography fontWeight="bold">
+                      {dayjs(Number(asset.account?.endTime || 0) * 1000).format("YYYY/MM/DD HH:mm:ss")}
+                    </Typography>
                   </Typography>
                 )}
                 {(asset.account.vesting.linear || asset.account.vesting.intervals) && (
-                  <Typography textAlign="center">
-                    Can claim: {((amountToClaim > 0 ? amountToClaim : 0) / factor).toLocaleString()}
+                  <Typography textAlign="center" fontWeight={100}>
+                    Can claim:{" "}
+                    <Typography fontWeight="bold" component="span">
+                      {formatter.format((amountToClaim > 0 ? amountToClaim : 0) / factor)}
+                    </Typography>
                   </Typography>
                 )}
               </Stack>
@@ -205,26 +226,36 @@ export function Asset({ asset, owner }: { asset: AssetWithPublicKey; owner: stri
                   <strong>{formatter.format(Number(asset.account.amount) / factor)}</strong> SOL
                 </Typography>
                 {(asset.account.vesting.linear || asset.account.vesting.intervals) && (
-                  <Typography textAlign="center">
-                    Claimed: {(Number(asset.account.claimed) / factor).toLocaleString()}
+                  <Typography textAlign="center" fontWeight={100}>
+                    Claimed:{" "}
+                    <Typography fontWeight="bold" component="span">
+                      {(Number(asset.account.claimed) / factor).toLocaleString()}
+                    </Typography>
                   </Typography>
                 )}
 
                 {asset.account.vesting.linear && (
-                  <Typography textAlign="center">
+                  <Typography textAlign="center" fontWeight={100}>
                     Linear vesting until{" "}
-                    {dayjs((Number(asset.account?.endTime) || 0) * 1000).format("DD/MM/YYYY HH:mm:ss")}
+                    <Typography fontWeight="bold">
+                      {dayjs((Number(asset.account?.endTime) || 0) * 1000).format("YYYY/MM/DD HH:mm:ss")}
+                    </Typography>
                   </Typography>
                 )}
                 {asset.account.vesting.intervals && (
-                  <Typography textAlign="center">
+                  <Typography textAlign="center" fontWeight={100}>
                     Vesting over {asset.account.vesting.intervals.numIntervals} intervals until{" "}
-                    {dayjs(Number(asset.account?.endTime || 0) * 1000).format("DD/MM/YYYY HH:mm:ss")}
+                    <Typography fontWeight="bold">
+                      {dayjs(Number(asset.account?.endTime || 0) * 1000).format("YYYY/MM/DD HH:mm:ss")}
+                    </Typography>
                   </Typography>
                 )}
                 {(asset.account.vesting.linear || asset.account.vesting.intervals) && (
-                  <Typography textAlign="center">
-                    Can claim: {((amountToClaim > 0 ? amountToClaim : 0) / factor).toLocaleString()}
+                  <Typography textAlign="center" fontWeight={100}>
+                    Can claim:{" "}
+                    <Typography fontWeight="bold" component="span">
+                      {((amountToClaim > 0 ? amountToClaim : 0) / factor).toLocaleString()}
+                    </Typography>
                   </Typography>
                 )}
               </Stack>
@@ -273,8 +304,10 @@ export function Asset({ asset, owner }: { asset: AssetWithPublicKey; owner: stri
             )}
             {(asset.account.authority as any) !== owner && (
               <Stack direction="row" spacing={2}>
-                <Typography>From:</Typography>
-                <CopyAddress variant="body2">{asset.account.authority.toString() as any}</CopyAddress>
+                <Typography fontWeight={100}>From:</Typography>
+                <CopyAddress variant="body2" fontWeight="bold">
+                  {asset.account.authority.toString() as any}
+                </CopyAddress>
               </Stack>
             )}
           </Stack>
