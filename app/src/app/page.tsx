@@ -21,6 +21,7 @@ import {
   IconButton,
   ToggleButtonGroup,
   ToggleButton,
+  FormLabel,
 } from "@mui/material"
 import { useAnchor } from "./context/anchor"
 import { ChangeEvent, useEffect, useState } from "react"
@@ -35,22 +36,22 @@ import { Many, orderBy } from "lodash"
 import { WalletButton } from "./components/WalletButton"
 
 import { useRouter, useSearchParams } from "next/navigation"
-import { Close, TripOrigin } from "@mui/icons-material"
+import { Close, Search, TripOrigin } from "@mui/icons-material"
 import { getDigitalAsset } from "./helpers/helius"
 import { TokenStandard, fetchDigitalAsset } from "@metaplex-foundation/mpl-token-metadata"
 import { useUmi } from "./context/umi"
 import { findCrowPda } from "./helpers/pdas"
+import { CopyAddress } from "./components/CopyAddress"
+import toast from "react-hot-toast"
 
 export default function Home() {
   const router = useRouter()
   const search = useSearchParams()
   const [filter, setFilter] = useState("assets")
   const [sort, setSort] = useState("assets.desc")
-  const [walletError, setWalletError] = useState<null | string>(null)
   const { digitalAssetsWithCrows, fetching } = useDigitalAssets()
   const [searchType, setSearchType] = useState("wallet")
-  const [nftMint, setNftMint] = useState("")
-  const [nftMintError, setNftMintError] = useState<null | string>(null)
+  const [searchTerm, setSearchTerm] = useState("")
   const program = useAnchor()
   const umi = useUmi()
   const wallet = useWallet()
@@ -63,52 +64,49 @@ export default function Home() {
     setSort(e.target.value)
   }
 
-  useEffect(() => {
-    if (!nftMint) {
-      setNftMintError(null)
+  async function goTo() {
+    if (!searchTerm) {
+      router.push(`/`)
       return
     }
-    ;(async () => {
-      try {
-        const pk = publicKey(nftMint)
-        const da = await fetchDigitalAsset(umi, pk)
-        if (!da) {
-          throw new Error("NFT not found")
-        }
 
-        if (
-          ![
-            TokenStandard.NonFungible,
-            TokenStandard.NonFungibleEdition,
-            TokenStandard.ProgrammableNonFungible,
-            TokenStandard.ProgrammableNonFungibleEdition,
-          ].includes(unwrapOptionRecursively(da.metadata.tokenStandard) || 0)
-        ) {
-          throw new Error("Only non fungibles can be used as Crows")
+    try {
+      if (searchType === "wallet") {
+        try {
+          let pk = publicKey(searchTerm)
+          router.push(`/?wallet=${pk}`)
+        } catch (err) {
+          throw new Error("Invalid wallet address")
         }
-        router.push(`/crow/${da.publicKey}`)
-      } catch (err: any) {
-        setNftMintError(err.message)
+      } else {
+        try {
+          const pk = publicKey(searchTerm)
+          const da = await fetchDigitalAsset(umi, pk)
+          if (!da) {
+            throw new Error("NFT not found")
+          }
+
+          if (
+            ![
+              TokenStandard.NonFungible,
+              TokenStandard.NonFungibleEdition,
+              TokenStandard.ProgrammableNonFungible,
+              TokenStandard.ProgrammableNonFungibleEdition,
+            ].includes(unwrapOptionRecursively(da.metadata.tokenStandard) || 0)
+          ) {
+            throw new Error("Only non fungibles can be used as Crows")
+          }
+          router.push(`/crow/${da.publicKey}`)
+        } catch (err: any) {
+          throw new Error("Invalid mint")
+        }
       }
-    })()
-  }, [nftMint])
+    } catch (err: any) {
+      toast.error(err.message)
+    }
+  }
 
   const crows = digitalAssetsWithCrows.filter((da) => da.crow)
-
-  // if (!fetching && !crows.length) {
-  //   return (
-  //     <Center>
-  //       <Stack spacing={2} alignItems="center">
-  //         <Typography fontWeight="bold" textTransform="uppercase">
-  //           No crows found
-  //         </Typography>
-  //         <Button variant="contained" href="/transfer" LinkComponent={Link}>
-  //           Transfer something
-  //         </Button>
-  //       </Stack>
-  //     </Center>
-  //   )
-  // }
 
   const [sortType, order] = sort.split(".")
 
@@ -118,21 +116,11 @@ export default function Home() {
     order as Many<boolean | "desc" | "asc">
   )
 
-  const isMine = !search.get("wallet")
+  const isMine = wallet.publicKey?.toBase58() && wallet.publicKey.toBase58() !== search.get("wallet")
 
-  function setSearch(e: ChangeEvent<HTMLInputElement>) {
-    const wallet = e.target.value
-    if (wallet) {
-      try {
-        let pk = publicKey(wallet)
-        setWalletError(null)
-        router.push(`/?wallet=${pk}`, {})
-      } catch (err) {
-        setWalletError("Invalid wallet")
-      }
-    } else {
-      setWalletError(null)
-      router.push("/")
+  function checkEnter(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === "Enter") {
+      goTo()
     }
   }
 
@@ -140,11 +128,18 @@ export default function Home() {
     <Container sx={{ height: "100%", width: "100%" }}>
       <Center>
         <Stack spacing={4} width="100%" maxHeight="80vh" height="100%">
-          <Typography textAlign="center" fontWeight="bold" variant="h3">
-            {isMine ? "My " : ""}Crows
-          </Typography>
+          <Stack>
+            <Typography textAlign="center" fontWeight="bold" variant="h3">
+              {isMine ? "My " : ""}Crows
+            </Typography>
+            <Typography>
+              <CopyAddress fontWeight="bold" color="primary">
+                {isMine ? wallet.publicKey?.toBase58() : search.get("wallet")}
+              </CopyAddress>
+            </Typography>
+          </Stack>
 
-          <Stack direction="row" justifyContent="space-between" alignItems="center" spacing={2}>
+          <Stack direction={{ xs: "column", md: "row" }} justifyContent="space-between" alignItems="center" spacing={2}>
             <Stack spacing={2} direction="row">
               <ToggleButtonGroup
                 sx={{ backgroundColor: "background.default", borderRadius: 1 }}
@@ -152,45 +147,32 @@ export default function Home() {
                 exclusive
                 value={searchType}
                 onChange={(e, t) => t && setSearchType(t)}
+                size="small"
               >
                 <ToggleButton value="wallet">Wallet</ToggleButton>
-                <ToggleButton value="nft">NFT Mint</ToggleButton>
+                <ToggleButton value="nft" sx={{ whiteSpace: "nowrap" }}>
+                  NFT Mint
+                </ToggleButton>
               </ToggleButtonGroup>
-              {searchType === "wallet" && (
-                <TextField
-                  label="Wallet address"
-                  value={search.get("wallet") || ""}
-                  onChange={setSearch}
-                  sx={{ backgroundColor: "background.default", borderRadius: 1, width: 400 }}
-                  InputProps={{
-                    endAdornment: search.get("wallet") && (
-                      <InputAdornment position="end">
-                        <IconButton onClick={() => setSearch({ target: { value: "" } } as any)}>
-                          <Close />
-                        </IconButton>
-                      </InputAdornment>
-                    ),
-                  }}
-                />
-              )}
 
-              {searchType === "nft" && (
-                <TextField
-                  label="NFT Mint"
-                  value={nftMint}
-                  onChange={(e) => setNftMint(e.target.value)}
-                  sx={{ backgroundColor: "background.default", borderRadius: 1, width: 400 }}
-                  InputProps={{
-                    endAdornment: nftMint && (
-                      <InputAdornment position="end">
-                        <IconButton onClick={() => setNftMint("")}>
-                          <Close />
-                        </IconButton>
-                      </InputAdornment>
-                    ),
-                  }}
-                />
-              )}
+              <TextField
+                label={searchType === "nft" ? "NFT Mint" : "Wallet address"}
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                sx={{ backgroundColor: "background.default", borderRadius: 1 }}
+                fullWidth
+                size="small"
+                onKeyDown={checkEnter}
+                InputProps={{
+                  endAdornment: (
+                    <InputAdornment position="end">
+                      <IconButton onClick={goTo}>
+                        <Search fontSize="small" />
+                      </IconButton>
+                    </InputAdornment>
+                  ),
+                }}
+              />
             </Stack>
 
             <Stack direction="row" justifyContent="flex-end" spacing={2}>
