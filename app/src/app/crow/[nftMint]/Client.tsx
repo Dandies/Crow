@@ -28,7 +28,6 @@ export function Client({ daWithCrow: initialDaWithCrow }: { daWithCrow: DigitalA
   }, [initialDaWithCrow])
 
   async function fetchDigitalAsset(nftMint: string) {
-    console.log("FETCHING")
     const daWithCrow = await fetchDaWithCrow(nftMint)
     setDaWithCrow(daWithCrow)
   }

@@ -81,7 +81,7 @@ async function getFungiblesByOwner(ownerAddress: string, page: number) {
     } as any)
     return result
   } catch (err) {
-    console.log(err)
+    console.error(err)
   }
 }
 
@@ -109,7 +109,6 @@ export async function getDandies(ownerAddress: string) {
 }
 
 export async function getPriorityFeesForTx(tx: string, feeLevel: PriorityFees) {
-  console.log(feeLevel)
   const { data } = await axios.post(url, {
     jsonrpc: "2.0",
     id: "1",
@@ -121,8 +120,6 @@ export async function getPriorityFeesForTx(tx: string, feeLevel: PriorityFees) {
       },
     ],
   })
-
-  console.log(data)
 
   return data?.result?.priorityFeeEstimate || 0
 }
