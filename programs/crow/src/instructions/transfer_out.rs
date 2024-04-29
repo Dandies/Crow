@@ -15,7 +15,7 @@ use anchor_spl::{
 };
 
 use crate::{
-    constants::{FEES_WALLET, FEE_WAIVER},
+    constants::{FEES_WALLET, FEE_WAIVER, STAKE_PROGRAM},
     state::{Asset, AssetType, Crow, ProgramConfig, Vesting},
     utils::get_fee,
     CrowError, TransferOutEvent,
@@ -129,6 +129,9 @@ pub struct TransferOut<'info> {
     pub token_program: Program<'info, Token>,
     pub associated_token_program: Program<'info, AssociatedToken>,
     pub metadata_program: Program<'info, Metadata>,
+
+    #[account(owner = STAKE_PROGRAM)]
+    pub delegate: Option<AccountInfo<'info>>,
 
     /// CHECK: account checked in CPI
     pub sysvar_instructions: AccountInfo<'info>,
@@ -271,13 +274,14 @@ pub fn transfer_out_handler(ctx: Context<TransferOut>, fee: Option<u64>) -> Resu
             .expect("token_record expected");
 
         if token_record.state != TokenState::Unlocked {
-            return err!(CrowError::TokenIsLocked);
+            // if locked, only allow transfer if locked using stake program
+            require!(ctx.accounts.delegate.is_some(), CrowError::TokenIsLocked);
         }
     } else {
-        require!(
-            ctx.accounts.nft_token.state != AccountState::Frozen,
-            CrowError::TokenIsLocked
-        );
+        if ctx.accounts.nft_token.state == AccountState::Frozen {
+            // if locked, only allow transfer if locked using stake program
+            require!(ctx.accounts.delegate.is_some(), CrowError::TokenIsLocked);
+        }
     }
 
     require_gte!(current_time, asset.start_time, CrowError::CannotClaimYet);

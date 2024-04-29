@@ -14,17 +14,21 @@ import {
   Keypair,
   PublicKey,
   createSignerFromKeypair,
+  generateSigner,
   sol,
   tokenAmount,
   transactionBuilder,
   unwrapOptionRecursively,
 } from "@metaplex-foundation/umi"
-import { adminProgram, createNewUser, programPaidBy } from "./helper"
+import { STAKE_PROGRAM, adminProgram, createNewUser, programPaidBy } from "./helper"
 import {
   DigitalAsset,
   MPL_TOKEN_METADATA_PROGRAM_ID,
   TokenStandard,
+  delegateStandardV1,
   delegateUtilityV1,
+  fetchDigitalAssetWithToken,
+  freezeDelegatedAccount,
   lockV1,
   revokeUtilityV1,
   transferV1,
@@ -44,16 +48,17 @@ import {
   sleep,
 } from "./helpers/utils"
 import { createToken } from "./helpers/create-token"
-import { createAssociatedToken, safeFetchToken } from "@metaplex-foundation/mpl-toolbox"
+import { createAccount, createAssociatedToken, safeFetchToken } from "@metaplex-foundation/mpl-toolbox"
 import { createCollection } from "./helpers/create-collection"
+import { KeypairSigner } from "@metaplex-foundation/umi/dist/types/Keypair"
 
 const TX_FEE = 5000n
 const DISTRIBUTE_FEE = sol(0.001).basisPoints
 const CLAIM_FEE = sol(0.001).basisPoints
 
 describe("esCROW", () => {
-  let user: Keypair
-  let user2: Keypair
+  let user: KeypairSigner
+  let user2: KeypairSigner
   let userProgram: Program<Crow>
   let user2Program: Program<Crow>
   let dandiesCollection: DigitalAsset
@@ -147,6 +152,7 @@ describe("esCROW", () => {
                 feesWallet: FEES_WALLET,
                 feeWaiver: null,
                 asset: asset.publicKey,
+                delegate: null,
                 tokenMint: null,
                 nftMint: nft.publicKey,
                 nftMetadata: nft.metadata.publicKey,
@@ -203,6 +209,7 @@ describe("esCROW", () => {
                 feeWaiver: null,
                 asset: asset.publicKey,
                 tokenMint: null,
+                delegate: null,
                 nftMint: nft.publicKey,
                 nftMetadata: nft.metadata.publicKey,
                 nftToken: getTokenAccount(nft.publicKey, user2.publicKey),
@@ -258,6 +265,7 @@ describe("esCROW", () => {
             feeWaiver: null,
             asset: asset.publicKey,
             tokenMint: null,
+            delegate: null,
             nftMint: nft.publicKey,
             nftMetadata: nft.metadata.publicKey,
             nftTokenRecord: getTokenRecordPda(nft.publicKey, user2.publicKey),
@@ -347,6 +355,7 @@ describe("esCROW", () => {
                 feeWaiver: null,
                 asset: asset.publicKey,
                 tokenMint,
+                delegate: null,
                 nftMint: nft.publicKey,
                 nftMetadata: nft.metadata.publicKey,
                 nftTokenRecord: getTokenRecordPda(nft.publicKey, user2.publicKey),
@@ -382,6 +391,7 @@ describe("esCROW", () => {
             feeWaiver: FEE_WAIVER.publicKey,
             asset: asset.publicKey,
             tokenMint,
+            delegate: null,
             nftMint: nft.publicKey,
             nftMetadata: nft.metadata.publicKey,
             nftTokenRecord: getTokenRecordPda(nft.publicKey, user2.publicKey),
@@ -493,6 +503,7 @@ describe("esCROW", () => {
                 programConfig: findProgramConfigPda(),
                 feesWallet: FEES_WALLET,
                 feeWaiver: null,
+                delegate: null,
                 asset: asset.publicKey,
                 tokenMint: escrowNft.publicKey,
                 nftMint: nft.publicKey,
@@ -536,6 +547,7 @@ describe("esCROW", () => {
             asset: asset.publicKey,
             tokenMint: escrowNft.publicKey,
             nftMint: nft.publicKey,
+            delegate: null,
             nftMetadata: nft.metadata.publicKey,
             nftTokenRecord: getTokenRecordPda(nft.publicKey, user3.publicKey),
             nftToken: getTokenAccount(nft.publicKey, user3.publicKey),
@@ -562,14 +574,14 @@ describe("esCROW", () => {
         assert.equal(tokenAfter - tokenBefore, 1n, "Expected NFT to have been claimed")
         assert.equal(
           balAfter.basisPoints - balBefore.basisPoints,
-          accLamports.basisPoints,
-          "Expected authority to be repaid the acc opening rent"
+          accLamports.basisPoints + tokenLamports.basisPoints,
+          "Expected authority to be repaid the acc opening rent and token account rent"
         )
 
         assert.equal(
           feesWalletAfter.basisPoints - feesWalletBefore.basisPoints,
-          tokenLamports.basisPoints + CLAIM_FEE,
-          "Expected the fees wallet to receive the claim fee and token acc rent"
+          CLAIM_FEE,
+          "Expected the fees wallet to receive the claim fee"
         )
 
         await transferV1(umi, {
@@ -640,6 +652,7 @@ describe("esCROW", () => {
             asset: asset.publicKey,
             tokenMint: escrowNft.publicKey,
             nftMint: nft.publicKey,
+            delegate: null,
             nftMetadata: nft.metadata.publicKey,
             nftTokenRecord: getTokenRecordPda(nft.publicKey, user2.publicKey),
             nftToken: getTokenAccount(nft.publicKey, user2.publicKey),
@@ -666,8 +679,8 @@ describe("esCROW", () => {
         assert.equal(tokenAfter - tokenBefore, 1n, "Expected NFT to have been claimed")
         assert.equal(
           balAfter.basisPoints - balBefore.basisPoints,
-          accLamports.basisPoints,
-          "Expected authority to be repaid the original rent"
+          accLamports.basisPoints + tokenLamports.basisPoints,
+          "Expected authority to be repaid the original rent and token account rent"
         )
       })
     })
@@ -787,6 +800,7 @@ describe("esCROW", () => {
             feeWaiver: null,
             asset: asset1.publicKey,
             tokenMint,
+            delegate: null,
             nftMint: nft.publicKey,
             nftMetadata: nft.metadata.publicKey,
             nftTokenRecord: getTokenRecordPda(nft.publicKey, user2.publicKey),
@@ -845,6 +859,7 @@ describe("esCROW", () => {
             feeWaiver: null,
             asset: asset2.publicKey,
             tokenMint,
+            delegate: null,
             nftMint: nft.publicKey,
             nftMetadata: nft.metadata.publicKey,
             nftTokenRecord: getTokenRecordPda(nft.publicKey, user2.publicKey),
@@ -876,14 +891,8 @@ describe("esCROW", () => {
 
         assert.equal(
           creatorBalAfter.basisPoints - creatorBalBefore.basisPoints,
-          accLamports.basisPoints,
-          "Expected only the balance of the asset account to be sent to the creator"
-        )
-
-        assert.equal(
-          feesWalletAfter.basisPoints - feesWalletBefore.basisPoints,
-          tokenLamports.basisPoints,
-          "Expected the fees wallet to receive the token acc rent"
+          accLamports.basisPoints + tokenLamports.basisPoints,
+          "Expected the balance of the asset account and token account to be sent to the creator"
         )
 
         assert.equal(
@@ -986,6 +995,7 @@ describe("esCROW", () => {
               feeWaiver: null,
               asset: asset.publicKey,
               tokenMint,
+              delegate: null,
               nftMint: nft.publicKey,
               nftMetadata: nft.metadata.publicKey,
               nftTokenRecord: getTokenRecordPda(nft.publicKey, user2.publicKey),
@@ -1031,6 +1041,7 @@ describe("esCROW", () => {
               feeWaiver: null,
               asset: asset.publicKey,
               tokenMint,
+              delegate: null,
               nftMint: nft.publicKey,
               nftMetadata: nft.metadata.publicKey,
               nftTokenRecord: getTokenRecordPda(nft.publicKey, user2.publicKey),
@@ -1071,6 +1082,7 @@ describe("esCROW", () => {
               feeWaiver: null,
               asset: asset.publicKey,
               tokenMint,
+              delegate: null,
               nftMint: nft.publicKey,
               nftMetadata: nft.metadata.publicKey,
               nftTokenRecord: getTokenRecordPda(nft.publicKey, user2.publicKey),
@@ -1230,6 +1242,7 @@ describe("esCROW", () => {
                   feeWaiver: null,
                   asset: asset.publicKey,
                   tokenMint: null,
+                  delegate: null,
                   nftMint: nft.publicKey,
                   nftMetadata: nft.metadata.publicKey,
                   nftTokenRecord: getTokenRecordPda(nft.publicKey, user2.publicKey),
@@ -1264,6 +1277,7 @@ describe("esCROW", () => {
               feeWaiver: null,
               asset: asset.publicKey,
               tokenMint: null,
+              delegate: null,
               nftMint: nft.publicKey,
               nftMetadata: nft.metadata.publicKey,
               nftTokenRecord: getTokenRecordPda(nft.publicKey, user2.publicKey),
@@ -1304,6 +1318,7 @@ describe("esCROW", () => {
                   feeWaiver: null,
                   asset: asset.publicKey,
                   tokenMint: null,
+                  delegate: null,
                   nftMint: nft.publicKey,
                   nftMetadata: nft.metadata.publicKey,
                   nftTokenRecord: getTokenRecordPda(nft.publicKey, user2.publicKey),
@@ -1338,6 +1353,7 @@ describe("esCROW", () => {
               feeWaiver: null,
               asset: asset.publicKey,
               tokenMint: null,
+              delegate: null,
               nftMint: nft.publicKey,
               nftMetadata: nft.metadata.publicKey,
               nftTokenRecord: getTokenRecordPda(nft.publicKey, user2.publicKey),
@@ -1432,6 +1448,7 @@ describe("esCROW", () => {
             feeWaiver: null,
             asset: asset.publicKey,
             tokenMint: null,
+            delegate: null,
             nftMint: dandy.publicKey,
             nftMetadata: dandy.metadata.publicKey,
             nftTokenRecord: getTokenRecordPda(dandy.publicKey, user2.publicKey),
@@ -1513,6 +1530,7 @@ describe("esCROW", () => {
             feeWaiver: null,
             asset: asset.publicKey,
             tokenMint: null,
+            delegate: null,
             nftMint: nft.publicKey,
             nftMetadata: nft.metadata.publicKey,
             nftTokenRecord: getTokenRecordPda(nft.publicKey, user2.publicKey),
@@ -1534,6 +1552,296 @@ describe("esCROW", () => {
 
         const balAfter = await umi.rpc.getBalance(user2.publicKey)
         assert.equal(balAfter.basisPoints - balBefore.basisPoints, sol(1).basisPoints - TX_FEE)
+      })
+    })
+
+    describe("Staked pNFT", () => {
+      let nft: DigitalAsset
+      let crow: PublicKey
+      const asset = generateSigner(umi)
+
+      before(async () => {
+        nft = await createNft(umi, true, undefined, user2.publicKey)
+        const delegate = generateSigner(umi)
+        await transactionBuilder()
+          .add(
+            createAccount(umi, {
+              newAccount: delegate,
+              lamports: sol(0.1),
+              space: 0,
+              programId: STAKE_PROGRAM,
+            })
+          )
+          .add(
+            delegateUtilityV1(umi, {
+              mint: nft.publicKey,
+              delegate: delegate.publicKey,
+              tokenStandard: TokenStandard.ProgrammableNonFungible,
+              authority: user2,
+              token: getTokenAccount(nft.publicKey, user2.publicKey),
+              authorizationRules: unwrapOptionRecursively(nft.metadata.programmableConfig).ruleSet,
+            })
+          )
+          .add(
+            lockV1(umi, {
+              mint: nft.publicKey,
+              authority: delegate,
+              tokenStandard: TokenStandard.ProgrammableNonFungible,
+              token: getTokenAccount(nft.publicKey, user2.publicKey),
+            })
+          )
+          .sendAndConfirm(umi)
+        crow = findCrowPda(nft.publicKey)
+      })
+
+      it("can transfer in", async () => {
+        await userProgram.methods
+          .transferIn(
+            { sol: {} },
+            new BN(sol(1).basisPoints.toString()),
+            null,
+            null,
+            { none: {} },
+            new BN(sol(0.001).basisPoints.toString())
+          )
+          .accounts({
+            crow,
+            programConfig: findProgramConfigPda(),
+            feesWallet: FEES_WALLET,
+            feeWaiver: FEE_WAIVER.publicKey,
+            asset: asset.publicKey,
+            tokenMint: null,
+            nftMint: nft.publicKey,
+            nftMetadata: nft.metadata.publicKey,
+            escrowNftEdition: null,
+            escrowNftMetadata: null,
+            tokenAccount: null,
+            destinationToken: null,
+            ownerTokenRecord: null,
+            destinationTokenRecord: null,
+            metadataProgram: MPL_TOKEN_METADATA_PROGRAM_ID,
+            sysvarInstructions: anchor.web3.SYSVAR_INSTRUCTIONS_PUBKEY,
+            authRules: null,
+            authRulesProgram: null,
+          })
+          .signers([toWeb3JsKeypair(asset), toWeb3JsKeypair(FEE_WAIVER)])
+          .rpc()
+      })
+
+      it("cannot transfer out without providing delegate", async () => {
+        await expectFail(
+          () =>
+            user2Program.methods
+              .transferOut(null)
+              .accounts({
+                crow,
+                programConfig: findProgramConfigPda(),
+                feesWallet: FEES_WALLET,
+                feeWaiver: null,
+                asset: asset.publicKey,
+                tokenMint: null,
+                delegate: null,
+                nftMint: nft.publicKey,
+                nftMetadata: nft.metadata.publicKey,
+                nftTokenRecord: getTokenRecordPda(nft.publicKey, user2.publicKey),
+                nftToken: getTokenAccount(nft.publicKey, user2.publicKey),
+                escrowNftEdition: null,
+                escrowNftMetadata: null,
+                tokenAccount: null,
+                destinationToken: null,
+                ownerTokenRecord: null,
+                destinationTokenRecord: null,
+                metadataProgram: MPL_TOKEN_METADATA_PROGRAM_ID,
+                sysvarInstructions: anchor.web3.SYSVAR_INSTRUCTIONS_PUBKEY,
+                authRules: null,
+                authRulesProgram: null,
+                authority: user.publicKey,
+                recipient: user2.publicKey,
+              })
+              .rpc(),
+          (err) => assertErrorCode(err, "TokenIsLocked")
+        )
+      })
+
+      it("can transfer out if delegate is expected owner", async () => {
+        const daWithToken = await fetchDigitalAssetWithToken(
+          umi,
+          nft.publicKey,
+          getTokenAccount(nft.publicKey, user2.publicKey)
+        )
+        await user2Program.methods
+          .transferOut(null)
+          .accounts({
+            crow,
+            programConfig: findProgramConfigPda(),
+            feesWallet: FEES_WALLET,
+            feeWaiver: null,
+            asset: asset.publicKey,
+            tokenMint: null,
+            delegate: unwrapOptionRecursively(daWithToken.tokenRecord.delegate),
+            nftMint: nft.publicKey,
+            nftMetadata: nft.metadata.publicKey,
+            nftTokenRecord: getTokenRecordPda(nft.publicKey, user2.publicKey),
+            nftToken: getTokenAccount(nft.publicKey, user2.publicKey),
+            escrowNftEdition: null,
+            escrowNftMetadata: null,
+            tokenAccount: null,
+            destinationToken: null,
+            ownerTokenRecord: null,
+            destinationTokenRecord: null,
+            metadataProgram: MPL_TOKEN_METADATA_PROGRAM_ID,
+            sysvarInstructions: anchor.web3.SYSVAR_INSTRUCTIONS_PUBKEY,
+            authRules: null,
+            authRulesProgram: null,
+            authority: user.publicKey,
+            recipient: user2.publicKey,
+          })
+          .rpc()
+      })
+    })
+
+    describe("Staked NFT", () => {
+      let nft: DigitalAsset
+      let crow: PublicKey
+      const asset = generateSigner(umi)
+
+      before(async () => {
+        nft = await createNft(umi, false, undefined, user2.publicKey)
+        const delegate = generateSigner(umi)
+        await transactionBuilder()
+          .add(
+            createAccount(umi, {
+              newAccount: delegate,
+              lamports: sol(0.1),
+              space: 0,
+              programId: STAKE_PROGRAM,
+            })
+          )
+          .add(
+            delegateStandardV1(umi, {
+              mint: nft.publicKey,
+              delegate: delegate.publicKey,
+              tokenStandard: TokenStandard.NonFungible,
+              authority: user2,
+              token: getTokenAccount(nft.publicKey, user2.publicKey),
+              tokenOwner: user2.publicKey,
+            })
+          )
+          .add(
+            freezeDelegatedAccount(umi, {
+              mint: nft.publicKey,
+              delegate,
+              tokenAccount: getTokenAccount(nft.publicKey, user2.publicKey),
+            })
+          )
+          .sendAndConfirm(umi)
+
+        crow = findCrowPda(nft.publicKey)
+      })
+
+      it("can transfer in", async () => {
+        await userProgram.methods
+          .transferIn(
+            { sol: {} },
+            new BN(sol(1).basisPoints.toString()),
+            null,
+            null,
+            { none: {} },
+            new BN(sol(0.001).basisPoints.toString())
+          )
+          .accounts({
+            crow,
+            programConfig: findProgramConfigPda(),
+            feesWallet: FEES_WALLET,
+            feeWaiver: FEE_WAIVER.publicKey,
+            asset: asset.publicKey,
+            tokenMint: null,
+            nftMint: nft.publicKey,
+            nftMetadata: nft.metadata.publicKey,
+            escrowNftEdition: null,
+            escrowNftMetadata: null,
+            tokenAccount: null,
+            destinationToken: null,
+            ownerTokenRecord: null,
+            destinationTokenRecord: null,
+            metadataProgram: MPL_TOKEN_METADATA_PROGRAM_ID,
+            sysvarInstructions: anchor.web3.SYSVAR_INSTRUCTIONS_PUBKEY,
+            authRules: null,
+            authRulesProgram: null,
+          })
+          .signers([toWeb3JsKeypair(asset), toWeb3JsKeypair(FEE_WAIVER)])
+          .rpc()
+      })
+
+      it("cannot transfer out without providing delegate", async () => {
+        await expectFail(
+          () =>
+            user2Program.methods
+              .transferOut(null)
+              .accounts({
+                crow,
+                programConfig: findProgramConfigPda(),
+                feesWallet: FEES_WALLET,
+                feeWaiver: null,
+                asset: asset.publicKey,
+                tokenMint: null,
+                delegate: null,
+                nftMint: nft.publicKey,
+                nftMetadata: nft.metadata.publicKey,
+                nftTokenRecord: null,
+                nftToken: getTokenAccount(nft.publicKey, user2.publicKey),
+                escrowNftEdition: null,
+                escrowNftMetadata: null,
+                tokenAccount: null,
+                destinationToken: null,
+                ownerTokenRecord: null,
+                destinationTokenRecord: null,
+                metadataProgram: MPL_TOKEN_METADATA_PROGRAM_ID,
+                sysvarInstructions: anchor.web3.SYSVAR_INSTRUCTIONS_PUBKEY,
+                authRules: null,
+                authRulesProgram: null,
+                authority: user.publicKey,
+                recipient: user2.publicKey,
+              })
+              .rpc(),
+          (err) => assertErrorCode(err, "TokenIsLocked")
+        )
+      })
+
+      it("can transfer out if delegate is expected owner", async () => {
+        const daWithToken = await fetchDigitalAssetWithToken(
+          umi,
+          nft.publicKey,
+          getTokenAccount(nft.publicKey, user2.publicKey)
+        )
+        await user2Program.methods
+          .transferOut(null)
+          .accounts({
+            crow,
+            programConfig: findProgramConfigPda(),
+            feesWallet: FEES_WALLET,
+            feeWaiver: null,
+            asset: asset.publicKey,
+            tokenMint: null,
+            delegate: unwrapOptionRecursively(daWithToken.token.delegate),
+            nftMint: nft.publicKey,
+            nftMetadata: nft.metadata.publicKey,
+            nftTokenRecord: null,
+            nftToken: getTokenAccount(nft.publicKey, user2.publicKey),
+            escrowNftEdition: null,
+            escrowNftMetadata: null,
+            tokenAccount: null,
+            destinationToken: null,
+            ownerTokenRecord: null,
+            destinationTokenRecord: null,
+            metadataProgram: MPL_TOKEN_METADATA_PROGRAM_ID,
+            sysvarInstructions: anchor.web3.SYSVAR_INSTRUCTIONS_PUBKEY,
+            authRules: null,
+            authRulesProgram: null,
+            authority: user.publicKey,
+            recipient: user2.publicKey,
+          })
+          .rpc()
       })
     })
 
@@ -1602,6 +1910,7 @@ describe("esCROW", () => {
                 feeWaiver: null,
                 asset: asset.publicKey,
                 tokenMint: null,
+                delegate: null,
                 nftMint: nft.publicKey,
                 nftMetadata: nft.metadata.publicKey,
                 nftTokenRecord: getTokenRecordPda(nft.publicKey, user2.publicKey),
@@ -1635,6 +1944,7 @@ describe("esCROW", () => {
             feeWaiver: FEE_WAIVER.publicKey,
             asset: asset.publicKey,
             tokenMint: null,
+            delegate: null,
             nftMint: nft.publicKey,
             nftMetadata: nft.metadata.publicKey,
             nftTokenRecord: getTokenRecordPda(nft.publicKey, user2.publicKey),

@@ -1,5 +1,5 @@
 import * as anchor from "@coral-xyz/anchor"
-import { Keypair, sol } from "@metaplex-foundation/umi"
+import { Keypair, generateSigner, publicKey, sol } from "@metaplex-foundation/umi"
 import { Crow } from "../target/types/crow"
 import { umi } from "./helpers/umi"
 import { toWeb3JsKeypair } from "@metaplex-foundation/umi-web3js-adapters"
@@ -18,8 +18,10 @@ export function programPaidBy(payer: Keypair): anchor.Program<Crow> {
 }
 
 export async function createNewUser() {
-  const kp = umi.eddsa.generateKeypair()
+  const kp = generateSigner(umi)
 
   await umi.rpc.airdrop(kp.publicKey, sol(100))
   return kp
 }
+
+export const STAKE_PROGRAM = publicKey("STAKEQkGBjkhCXabzB5cUbWgSSvbVJFEm2oEnyWzdKE")

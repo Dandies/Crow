@@ -14,6 +14,7 @@ pub mod constants {
     use solana_program::{pubkey, pubkey::Pubkey};
     pub const FEES_WALLET: Pubkey = pubkey!("B84GxkZDmXmbZ9PBK7yLvYpNhMX1TAUQ4T7tQWsukUyT");
     pub const FEE_WAIVER: Pubkey = pubkey!("9WUge3Kcva9dHBjCKc7KkdffYwshHJTAmeV1UHnhnhG3");
+    pub const STAKE_PROGRAM: Pubkey = pubkey!("STAKEQkGBjkhCXabzB5cUbWgSSvbVJFEm2oEnyWzdKE");
     pub const FEES_WAIVED_COLLECTION: Pubkey =
         pubkey!("TTPN34UsRSBxkEyuC5Zk48b4c5Wxy3wuVxFoPhTMu8a");
 }
@@ -23,6 +24,7 @@ pub mod constants {
     use solana_program::{pubkey, pubkey::Pubkey};
     pub const FEES_WALLET: Pubkey = pubkey!("B84GxkZDmXmbZ9PBK7yLvYpNhMX1TAUQ4T7tQWsukUyT");
     pub const FEE_WAIVER: Pubkey = pubkey!("5d9sgp6xa6bif52EY1UrrPBUhfhYVdqzxvdSpdRexydQ");
+    pub const STAKE_PROGRAM: Pubkey = pubkey!("STAKEQkGBjkhCXabzB5cUbWgSSvbVJFEm2oEnyWzdKE");
     pub const FEES_WAIVED_COLLECTION: Pubkey =
         pubkey!("CdxKBSnipG5YD5KBuH3L1szmhPW1mwDHe6kQFR3nk9ys");
 }
