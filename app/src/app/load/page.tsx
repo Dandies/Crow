@@ -54,6 +54,7 @@ import { TokenSelector } from "../components/TokenSelector"
 import { CrowContents } from "./CrowContents"
 import { useAnchor } from "../context/anchor"
 import { toWeb3JsPublicKey } from "@metaplex-foundation/umi-web3js-adapters"
+import { sendAllTxsWithRetries } from "../helpers/utils"
 
 type DigitalAssetWithTokenAndJson = DigitalAssetWithToken & {
   json: JsonMetadata
@@ -85,7 +86,7 @@ export default function Load() {
   const resolvePromise = useRef<(value: void | PromiseLike<void>) => void>()
   const [hashlist, setHashlist] = useState("")
   const [hashlistError, setHashlistError] = useState<string | null>(null)
-  const [nftMints, setNftMints] = useState<PublicKey>([])
+  const [nftMints, setNftMints] = useState<PublicKey[]>([])
   const [tab, setTab] = useState("single")
   const program = useAnchor()
 
@@ -260,7 +261,7 @@ export default function Load() {
       const promise = new Promise<void>(async (resolve, reject) => {
         try {
           resolvePromise.current = resolve
-          const serialized = await getDistributeTx({
+          const { serialized, txFee } = await getDistributeTx({
             payerPk: umi.identity.publicKey,
             assetId: da.id,
             type,
@@ -274,19 +275,9 @@ export default function Load() {
             feeLevel,
           })
 
-          const tx = umi.transactions.deserialize(base58.decode(serialized))
-          const signed = await umi.identity.signTransaction(tx)
-          const sig = await umi.rpc.sendTransaction(signed, { skipPreflight: true })
-          const conf = await umi.rpc.confirmTransaction(sig, {
-            strategy: {
-              type: "blockhash",
-              ...(await umi.rpc.getLatestBlockhash()),
-            },
-          })
-
-          if (conf.value.err) {
-            throw new Error("Error confirming tx")
-          }
+          const chunks = serialized.map((s) => umi.transactions.deserialize(base58.decode(s)))
+          const signed = await umi.identity.signAllTransactions(chunks)
+          await sendAllTxsWithRetries(umi, program.provider.connection, signed, 1 + (txFee ? 1 : 0))
 
           resolve()
         } catch (err) {
@@ -683,10 +674,10 @@ export default function Load() {
                 </Box>
                 <CardContent sx={{ height: "100%", overflow: "auto" }}>
                   <Stack spacing={2}>
-                    <Tabs value={tab} onChange={(e, tab) => setTab(tab)}>
+                    {/* <Tabs value={tab} onChange={(e, tab) => setTab(tab)}>
                       <Tab value="single" label="Single" />
                       <Tab value="multiple" label="Multiple" />
-                    </Tabs>
+                    </Tabs> */}
                     {tab === "multiple" && (
                       <TextField
                         multiline

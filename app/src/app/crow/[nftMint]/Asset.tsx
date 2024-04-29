@@ -21,6 +21,7 @@ import TokenIcon from "@/../public/token.svg"
 import NftIcon from "@/../public/nft.svg"
 import { dayjs } from "@/app/helpers/dayjs"
 import { useParams } from "next/navigation"
+import { sendAllTxsWithRetries } from "@/app/helpers/utils"
 
 export function Asset({
   asset,
@@ -110,20 +111,20 @@ export function Asset({
     try {
       setLoading(true)
       const promise = Promise.resolve().then(async () => {
-        const serialized = await getClaimTx(asset.publicKey as unknown as string, umi.identity.publicKey, feeLevel)
-        const tx = umi.transactions.deserialize(base58.decode(serialized))
-        const signed = await umi.identity.signTransaction(tx)
-        const sig = await umi.rpc.sendTransaction(signed, { skipPreflight: true })
-        const conf = await umi.rpc.confirmTransaction(sig, {
-          strategy: {
-            type: "blockhash",
-            ...(await umi.rpc.getLatestBlockhash()),
-          },
-        })
+        const { serialized, txFee, increasedComputeUnits } = await getClaimTx(
+          asset.publicKey as unknown as string,
+          umi.identity.publicKey,
+          feeLevel
+        )
 
-        if (conf.value.err) {
-          throw new Error("Error confirming tx")
-        }
+        const chunks = serialized.map((item) => umi.transactions.deserialize(base58.decode(item)))
+        const signed = await umi.identity.signAllTransactions(chunks)
+        return await sendAllTxsWithRetries(
+          umi,
+          program.provider.connection,
+          signed,
+          (increasedComputeUnits ? 1 : 0) + (txFee ? 1 : 0)
+        )
       })
 
       toast.promise(promise, {

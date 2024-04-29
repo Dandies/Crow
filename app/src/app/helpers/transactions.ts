@@ -26,7 +26,7 @@ import { getDandies, getPriorityFeesForTx } from "./helius"
 import { FEES_WALLET, PriorityFees } from "../constants"
 import base58 from "bs58"
 import { MPL_TOKEN_AUTH_RULES_PROGRAM_ID } from "@metaplex-foundation/mpl-token-auth-rules"
-import { getFee } from "./utils"
+import { getFee, packTx } from "./utils"
 import { BN } from "bn.js"
 import { setComputeUnitLimit, setComputeUnitPrice } from "@metaplex-foundation/mpl-toolbox"
 
@@ -115,31 +115,23 @@ export async function getClaimTx(assetId: string, payerPk: string, feeLevel?: Pr
     signers,
   })
 
-  if (destinationTokenRecord) {
-    tx = tx.prepend(setComputeUnitLimit(umi, { units: 300_000 }))
-  }
+  const { chunks, txFee } = await packTx(
+    umi,
+    tx,
+    feeLevel || PriorityFees.MEDIUM,
+    destinationTokenRecord ? 300_00 : undefined
+  )
 
-  let built = await tx.buildWithLatestBlockhash(umi)
+  let built = await Promise.all(chunks.map((c) => c.buildWithLatestBlockhash(umi)))
 
   if (feeWaiver) {
-    built = await feeWaiver.signTransaction(built)
+    built = await feeWaiver.signAllTransactions(built)
   }
 
-  const encoded = base58.encode(umi.transactions.serialize(built))
-
-  const txFee = feeLevel && (await getPriorityFeesForTx(encoded, feeLevel))
-  if (txFee) {
-    tx = tx.prepend(setComputeUnitPrice(umi, { microLamports: txFee }))
-
-    let built = await tx.buildWithLatestBlockhash(umi)
-
-    if (feeWaiver) {
-      built = await feeWaiver.signTransaction(built)
-    }
-
-    return base58.encode(umi.transactions.serialize(built))
-  } else {
-    return encoded
+  return {
+    serialized: built.map((b) => base58.encode(umi.transactions.serialize(b))),
+    txFee,
+    increasedComputeUnits: !!destinationTokenRecord,
   }
 }
 
@@ -257,29 +249,23 @@ export async function getDistributeTx({
     tx = tx.prepend(setComputeUnitLimit(umi, { units: 300_000 }))
   }
 
-  let built = await tx.buildWithLatestBlockhash(umi)
-  built = await asset.signTransaction(built)
+  const { chunks, txFee } = await packTx(
+    umi,
+    tx,
+    feeLevel || PriorityFees.MEDIUM,
+    destinationTokenRecord ? 300_00 : undefined
+  )
+
+  let built = await Promise.all(chunks.map((c) => c.buildWithLatestBlockhash(umi)))
 
   if (feeWaiver) {
-    built = await feeWaiver.signTransaction(built)
+    built = await feeWaiver.signAllTransactions(built)
   }
 
-  const encoded = base58.encode(umi.transactions.serialize(built))
-
-  const txFee = feeLevel && (await getPriorityFeesForTx(encoded, feeLevel))
-  if (txFee) {
-    tx = tx.prepend(setComputeUnitPrice(umi, { microLamports: txFee }))
-
-    let built = await tx.buildWithLatestBlockhash(umi)
-    built = await asset.signTransaction(built)
-
-    if (feeWaiver) {
-      built = await feeWaiver.signTransaction(built)
-    }
-
-    return base58.encode(umi.transactions.serialize(built))
-  } else {
-    return encoded
+  return {
+    serialized: built.map((b) => base58.encode(umi.transactions.serialize(b))),
+    txFee,
+    increasedComputeUnits: !!destinationTokenRecord,
   }
 }
 

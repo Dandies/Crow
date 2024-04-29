@@ -3,12 +3,14 @@ import { useWallet } from "@solana/wallet-adapter-react"
 import { DAS } from "helius-sdk"
 import { PropsWithChildren, createContext, useContext, useEffect, useState } from "react"
 import { DANDIES_COLLECTION } from "../constants"
-import { CrowWithAssets } from "../types/types"
+import { AssetWithPublicKey, CrowWithAssets, CrowWithPublicKey } from "../types/types"
 import { useAnchor } from "./anchor"
 import { groupBy } from "lodash"
 import { publicKey } from "@metaplex-foundation/umi"
 import { mapDasWithAccounts } from "../helpers/utils"
 import { useSearchParams } from "next/navigation"
+import axios from "axios"
+import { anonymousProgram } from "../helpers/anchor"
 
 const Context = createContext<
   | {
@@ -50,19 +52,25 @@ export function DigitalAssetsProvider({ children }: PropsWithChildren) {
     if (fetching) {
       return
     }
-    const worker = new Worker(new URL("../../../public/fetch-assets.worker.ts", import.meta.url))
 
-    worker.onmessage = async (event) => {
-      const { digitalAssets } = event.data
-      setDigitalAssetsWithCrows(digitalAssets.filter((da: DigitalAssetWithCrow) => !da.compression?.compressed))
-      setFetching(false)
-      worker.terminate()
-    }
     setFetching(true)
 
-    worker.postMessage({
-      wallet,
-    })
+    const [{ data: digitalAssets }, crows, assets]: [
+      { data: DAS.GetAssetResponse[] },
+      CrowWithPublicKey[],
+      AssetWithPublicKey[]
+    ] = await Promise.all([
+      axios.post("/api/get-nfts", {
+        ownerAddress: wallet,
+      }),
+      program.account.crow.all(),
+      program.account.asset.all(),
+    ])
+
+    setDigitalAssetsWithCrows(
+      mapDasWithAccounts(digitalAssets, crows, assets).filter((da: DigitalAssetWithCrow) => !da.compression?.compressed)
+    )
+    setFetching(false)
   }
 
   async function fetchAccounts() {

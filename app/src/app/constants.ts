@@ -29,3 +29,7 @@ export enum PriorityFees {
   VERYHIGH = "VeryHigh",
   // UNSAFEMAX = "UnsafeMax",
 }
+
+export const MAX_TX_SIZE = 1232
+export const PRIORITY_FEE_IX_SIZE = 44
+export const PRIORITY_AND_COMPUTE_IXS_SIZE = 56
