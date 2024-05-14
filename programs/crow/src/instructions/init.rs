@@ -20,11 +20,8 @@ pub struct Init<'info> {
     )]
     pub crow: Account<'info, Crow>,
 
-    #[account(
-        mint::decimals = 0,
-        constraint = nft_mint.supply == 1 @ CrowError::TokenNotNft
-    )]
-    pub nft_mint: Account<'info, Mint>,
+    /// CHECK: this account is checked in the instruction
+    pub nft_mint: AccountInfo<'info>,
 
     #[account(
         seeds = [
@@ -35,7 +32,7 @@ pub struct Init<'info> {
         seeds::program = Metadata::id(),
         bump,
     )]
-    pub nft_metadata: Box<Account<'info, MetadataAccount>>,
+    pub nft_metadata: Option<Account<'info, MetadataAccount>>,
 
     #[account(mut)]
     pub payer: Signer<'info>,
@@ -44,18 +41,24 @@ pub struct Init<'info> {
 }
 
 pub fn init_handler(ctx: Context<Init>) -> Result<()> {
-    if !matches!(
-        ctx.accounts
-            .nft_metadata
-            .token_standard
-            .as_ref()
-            .unwrap_or(&TokenStandard::NonFungible),
-        TokenStandard::NonFungible
-            | TokenStandard::ProgrammableNonFungible
-            | TokenStandard::NonFungibleEdition
-            | TokenStandard::ProgrammableNonFungibleEdition
-    ) {
-        return err!(CrowError::TokenNotNft);
+    if ctx.accounts.nft_metadata.is_some() {
+        if !matches!(
+            ctx.accounts
+                .nft_metadata
+                .as_ref()
+                .unwrap()
+                .token_standard
+                .as_ref()
+                .unwrap_or(&TokenStandard::NonFungible),
+            TokenStandard::NonFungible
+                | TokenStandard::ProgrammableNonFungible
+                | TokenStandard::NonFungibleEdition
+                | TokenStandard::ProgrammableNonFungibleEdition
+        ) {
+            return err!(CrowError::TokenNotNft);
+        }
+    } else {
+        require!(ctx.accounts.nft_mint.)
     }
 
     let crow = &mut ctx.accounts.crow;
