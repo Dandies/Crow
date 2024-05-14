@@ -304,12 +304,6 @@
           "isOptional": true
         },
         {
-          "name": "delegate",
-          "isMut": false,
-          "isSigner": false,
-          "isOptional": true
-        },
-        {
           "name": "systemProgram",
           "isMut": false,
           "isSigner": false
@@ -328,6 +322,12 @@
           "name": "metadataProgram",
           "isMut": false,
           "isSigner": false
+        },
+        {
+          "name": "delegate",
+          "isMut": false,
+          "isSigner": false,
+          "isOptional": true
         },
         {
           "name": "sysvarInstructions",
@@ -765,16 +765,9 @@
       "code": 6016,
       "name": "FeeWaiverNotProvided",
       "msg": "Fee waiver required as signer if providing a custom fee"
-    },
-    {
-      "code": 6017,
-      "name": "OnlyStakedDelegateAccepted",
-      "msg": "Only items delegated to // STAKE can be claimed from"
-    },
-    {
-      "code": 6018,
-      "name": "InvalidDelegate",
-      "msg": "Invalid delegate account provided"
     }
-  ]
+  ],
+  "metadata": {
+    "address": "Crow6rDB5ZhGGqV2uXAG6Ta7aLvyw22vRNAcxd7mu2sv"
+  }
 }

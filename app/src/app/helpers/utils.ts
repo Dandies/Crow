@@ -165,6 +165,7 @@ export async function sendAllTxsWithRetries(
           if (err.message.includes("This transaction has already been processed")) {
             resolved = true
           } else {
+            console.log(err.logs)
             console.error(displayErrorFromLog(err, err.message || "Error sending tx"))
           }
         }

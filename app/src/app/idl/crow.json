@@ -324,6 +324,18 @@
           "isSigner": false
         },
         {
+          "name": "delegate",
+          "isMut": false,
+          "isSigner": false,
+          "isOptional": true
+        },
+        {
+          "name": "staker",
+          "isMut": false,
+          "isSigner": false,
+          "isOptional": true
+        },
+        {
           "name": "sysvarInstructions",
           "isMut": false,
           "isSigner": false
@@ -342,6 +354,12 @@
         }
       ],
       "args": [
+        {
+          "name": "nftAuthBump",
+          "type": {
+            "option": "u8"
+          }
+        },
         {
           "name": "fee",
           "type": {
@@ -464,92 +482,68 @@
         "fields": [
           {
             "name": "crow",
-            "docs": [
-              "the crow this record belongs to (32)"
-            ],
+            "docs": ["the crow this record belongs to (32)"],
             "type": "publicKey"
           },
           {
             "name": "authority",
-            "docs": [
-              "the authority who can control this asset (32)"
-            ],
+            "docs": ["the authority who can control this asset (32)"],
             "type": "publicKey"
           },
           {
             "name": "assetType",
-            "docs": [
-              "the type of asset (1)"
-            ],
+            "docs": ["the type of asset (1)"],
             "type": {
               "defined": "AssetType"
             }
           },
           {
             "name": "tokenMint",
-            "docs": [
-              "the mint of the token (32)"
-            ],
+            "docs": ["the mint of the token (32)"],
             "type": "publicKey"
           },
           {
             "name": "amount",
-            "docs": [
-              "the amount to claim (8)"
-            ],
+            "docs": ["the amount to claim (8)"],
             "type": "u64"
           },
           {
             "name": "balance",
-            "docs": [
-              "the current balance (8)"
-            ],
+            "docs": ["the current balance (8)"],
             "type": "u64"
           },
           {
             "name": "claimed",
-            "docs": [
-              "the claimed balance (8)"
-            ],
+            "docs": ["the claimed balance (8)"],
             "type": "u64"
           },
           {
             "name": "startTime",
-            "docs": [
-              "when does this crow start (8)"
-            ],
+            "docs": ["when does this crow start (8)"],
             "type": "i64"
           },
           {
             "name": "endTime",
-            "docs": [
-              "when does this crow end (1 + 8)"
-            ],
+            "docs": ["when does this crow end (1 + 8)"],
             "type": {
               "option": "i64"
             }
           },
           {
             "name": "vesting",
-            "docs": [
-              "the type of vesting (1 + 2)"
-            ],
+            "docs": ["the type of vesting (1 + 2)"],
             "type": {
               "defined": "Vesting"
             }
           },
           {
             "name": "feesWaived",
-            "docs": [
-              "is this asset free to claim (1)"
-            ],
+            "docs": ["is this asset free to claim (1)"],
             "type": "bool"
           },
           {
             "name": "active",
-            "docs": [
-              "is this asset active (1)"
-            ],
+            "docs": ["is this asset active (1)"],
             "type": "bool"
           }
         ]
@@ -562,16 +556,12 @@
         "fields": [
           {
             "name": "nftMint",
-            "docs": [
-              "the nft mint the record belongs to (32)"
-            ],
+            "docs": ["the nft mint the record belongs to (32)"],
             "type": "publicKey"
           },
           {
             "name": "bump",
-            "docs": [
-              "bump of the authority (1)"
-            ],
+            "docs": ["bump of the authority (1)"],
             "type": "u8"
           }
         ]
@@ -584,23 +574,17 @@
         "fields": [
           {
             "name": "claimFee",
-            "docs": [
-              "the amount payable for claims (8)"
-            ],
+            "docs": ["the amount payable for claims (8)"],
             "type": "u64"
           },
           {
             "name": "distributeFee",
-            "docs": [
-              "the amount payable for distributing (8)"
-            ],
+            "docs": ["the amount payable for distributing (8)"],
             "type": "u64"
           },
           {
             "name": "bump",
-            "docs": [
-              "the bump of the program_config account (1)"
-            ],
+            "docs": ["the bump of the program_config account (1)"],
             "type": "u8"
           }
         ]

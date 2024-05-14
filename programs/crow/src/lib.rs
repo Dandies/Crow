@@ -50,8 +50,12 @@ pub mod crow {
         init_handler(ctx)
     }
 
-    pub fn transfer_out(ctx: Context<TransferOut>, fee: Option<u64>) -> Result<()> {
-        transfer_out_handler(ctx, fee)
+    pub fn transfer_out(
+        ctx: Context<TransferOut>,
+        nft_auth_bump: Option<u8>,
+        fee: Option<u64>,
+    ) -> Result<()> {
+        transfer_out_handler(ctx, nft_auth_bump, fee)
     }
 
     pub fn toggle_active(ctx: Context<ToggleActive>, active: bool) -> Result<()> {

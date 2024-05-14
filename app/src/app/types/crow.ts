@@ -324,6 +324,18 @@ export type Crow = {
           "isSigner": false
         },
         {
+          "name": "delegate",
+          "isMut": false,
+          "isSigner": false,
+          "isOptional": true
+        },
+        {
+          "name": "staker",
+          "isMut": false,
+          "isSigner": false,
+          "isOptional": true
+        },
+        {
           "name": "sysvarInstructions",
           "isMut": false,
           "isSigner": false
@@ -342,6 +354,12 @@ export type Crow = {
         }
       ],
       "args": [
+        {
+          "name": "nftAuthBump",
+          "type": {
+            "option": "u8"
+          }
+        },
         {
           "name": "fee",
           "type": {
@@ -1089,6 +1107,18 @@ export const IDL: Crow = {
           "isSigner": false
         },
         {
+          "name": "delegate",
+          "isMut": false,
+          "isSigner": false,
+          "isOptional": true
+        },
+        {
+          "name": "staker",
+          "isMut": false,
+          "isSigner": false,
+          "isOptional": true
+        },
+        {
           "name": "sysvarInstructions",
           "isMut": false,
           "isSigner": false
@@ -1107,6 +1137,12 @@ export const IDL: Crow = {
         }
       ],
       "args": [
+        {
+          "name": "nftAuthBump",
+          "type": {
+            "option": "u8"
+          }
+        },
         {
           "name": "fee",
           "type": {

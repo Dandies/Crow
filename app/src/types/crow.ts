@@ -304,12 +304,6 @@ export type Crow = {
           "isOptional": true
         },
         {
-          "name": "delegate",
-          "isMut": false,
-          "isSigner": false,
-          "isOptional": true
-        },
-        {
           "name": "systemProgram",
           "isMut": false,
           "isSigner": false
@@ -328,6 +322,12 @@ export type Crow = {
           "name": "metadataProgram",
           "isMut": false,
           "isSigner": false
+        },
+        {
+          "name": "delegate",
+          "isMut": false,
+          "isSigner": false,
+          "isOptional": true
         },
         {
           "name": "sysvarInstructions",
@@ -765,16 +765,6 @@ export type Crow = {
       "code": 6016,
       "name": "FeeWaiverNotProvided",
       "msg": "Fee waiver required as signer if providing a custom fee"
-    },
-    {
-      "code": 6017,
-      "name": "OnlyStakedDelegateAccepted",
-      "msg": "Only items delegated to // STAKE can be claimed from"
-    },
-    {
-      "code": 6018,
-      "name": "InvalidDelegate",
-      "msg": "Invalid delegate account provided"
     }
   ]
 };
@@ -1085,12 +1075,6 @@ export const IDL: Crow = {
           "isOptional": true
         },
         {
-          "name": "delegate",
-          "isMut": false,
-          "isSigner": false,
-          "isOptional": true
-        },
-        {
           "name": "systemProgram",
           "isMut": false,
           "isSigner": false
@@ -1109,6 +1093,12 @@ export const IDL: Crow = {
           "name": "metadataProgram",
           "isMut": false,
           "isSigner": false
+        },
+        {
+          "name": "delegate",
+          "isMut": false,
+          "isSigner": false,
+          "isOptional": true
         },
         {
           "name": "sysvarInstructions",
@@ -1546,16 +1536,6 @@ export const IDL: Crow = {
       "code": 6016,
       "name": "FeeWaiverNotProvided",
       "msg": "Fee waiver required as signer if providing a custom fee"
-    },
-    {
-      "code": 6017,
-      "name": "OnlyStakedDelegateAccepted",
-      "msg": "Only items delegated to // STAKE can be claimed from"
-    },
-    {
-      "code": 6018,
-      "name": "InvalidDelegate",
-      "msg": "Invalid delegate account provided"
     }
   ]
 };

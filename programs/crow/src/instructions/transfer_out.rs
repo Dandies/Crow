@@ -22,6 +22,7 @@ use crate::{
 };
 
 #[derive(Accounts)]
+#[instruction(nft_auth_bump: Option<u8>)]
 pub struct TransferOut<'info> {
     #[account(
         seeds = [b"program-config"],
@@ -130,8 +131,19 @@ pub struct TransferOut<'info> {
     pub associated_token_program: Program<'info, AssociatedToken>,
     pub metadata_program: Program<'info, Metadata>,
 
-    #[account(owner = STAKE_PROGRAM)]
+    /// CHECK: seeds checked
+    #[account(
+        seeds = [
+            b"STAKE",
+            staker.as_ref().expect("staker expected if providing delegate").key().as_ref(),
+            b"nft-authority",
+        ],
+        bump = nft_auth_bump.expect("Expected nft_auth_bump"),
+        seeds::program = STAKE_PROGRAM,
+    )]
     pub delegate: Option<AccountInfo<'info>>,
+    /// CHECK: just used for validating seeds
+    pub staker: Option<AccountInfo<'info>>,
 
     /// CHECK: account checked in CPI
     pub sysvar_instructions: AccountInfo<'info>,
@@ -227,7 +239,11 @@ impl<'info> TransferOut<'info> {
     }
 }
 
-pub fn transfer_out_handler(ctx: Context<TransferOut>, fee: Option<u64>) -> Result<()> {
+pub fn transfer_out_handler(
+    ctx: Context<TransferOut>,
+    _nft_auth_bump: Option<u8>,
+    fee: Option<u64>,
+) -> Result<()> {
     let current_time = Clock::get().unwrap().unix_timestamp;
     let asset = &ctx.accounts.asset;
     let crow = &ctx.accounts.crow;
@@ -295,9 +311,21 @@ pub fn transfer_out_handler(ctx: Context<TransferOut>, fee: Option<u64>) -> Resu
             let ref_time = i64::min(current_time, end_time);
             let time_spent = ref_time - asset.start_time;
 
-            let ratio = (time_spent * 100 / total_time) as u64;
+            msg!("total_time {}", total_time);
 
-            let claimable_balance = asset.amount * ratio / 100;
+            msg!("time_spent {}", time_spent);
+
+            let ratio = (time_spent * 10000 / total_time) as u64;
+
+            msg!("ratio {}", ratio);
+
+            let claimable_balance = asset.amount * ratio / 10000;
+
+            msg!(
+                "claimable_balance {}, claimed {}",
+                claimable_balance,
+                asset.claimed
+            );
 
             claimable_balance - asset.claimed
         }
