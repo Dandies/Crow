@@ -2,16 +2,19 @@ use anchor_lang::prelude::*;
 use anchor_spl::{
     associated_token::AssociatedToken,
     metadata::{
-        mpl_token_metadata::{instructions::TransferV1CpiBuilder, types::TokenStandard},
-        MasterEditionAccount, Metadata, MetadataAccount, TokenRecordAccount,
+        mpl_token_metadata::instructions::TransferV1CpiBuilder, MasterEditionAccount, Metadata,
+        MetadataAccount, TokenRecordAccount,
     },
-    token::{close_account, transfer, CloseAccount, Mint, Token, TokenAccount, Transfer},
+    token::{
+        close_account, transfer, CloseAccount, Mint, Token, TokenAccount, Transfer,
+        ID as SPL_TOKEN_ID,
+    },
 };
 
 use crate::{
     constants::{FEES_WALLET, FEE_WAIVER},
     state::{Asset, AssetType, Crow, ProgramConfig, Vesting},
-    utils::get_fee,
+    utils::{get_fee, init_crow},
     CrowError, TransferInEvent,
 };
 
@@ -35,11 +38,8 @@ pub struct TransferIn<'info> {
     )]
     pub crow: Box<Account<'info, Crow>>,
 
-    #[account(
-        mint::decimals = 0,
-        constraint = nft_mint.supply == 1 @ CrowError::TokenNotNft
-    )]
-    pub nft_mint: Box<Account<'info, Mint>>,
+    /// CHECK: checked in instruction
+    pub nft_mint: AccountInfo<'info>,
 
     #[account(
         seeds = [
@@ -50,7 +50,7 @@ pub struct TransferIn<'info> {
         seeds::program = Metadata::id(),
         bump,
     )]
-    pub nft_metadata: Box<Account<'info, MetadataAccount>>,
+    pub nft_metadata: Option<Box<Account<'info, MetadataAccount>>>,
 
     #[account(
         init,
@@ -194,8 +194,8 @@ impl<'info> TransferIn<'info> {
     }
 }
 
-pub fn transfer_in_handler(
-    ctx: Context<TransferIn>,
+pub fn transfer_in_handler<'info>(
+    ctx: Context<'_, '_, '_, 'info, TransferIn<'info>>,
     asset_type: AssetType,
     amount: Option<u64>,
     start_time: Option<i64>,
@@ -204,14 +204,24 @@ pub fn transfer_in_handler(
     fee: Option<u64>,
 ) -> Result<()> {
     let current_time = Clock::get().unwrap().unix_timestamp;
-    let crow = &ctx.accounts.crow;
     let start_time = start_time.unwrap_or(current_time);
     let maybe_token_mint = &ctx.accounts.token_mint;
     let fees_wallet = &ctx.accounts.fees_wallet;
+    let nft_mint = &ctx.accounts.nft_mint;
+    let nft_metadata = &ctx.accounts.nft_metadata;
 
     let fee_waiver = ctx.accounts.fee_waiver.is_some();
+
+    let require_metadata_account = nft_mint.owner == &SPL_TOKEN_ID;
+
+    let ref_account = if require_metadata_account {
+        nft_metadata.as_ref().unwrap().to_account_info()
+    } else {
+        nft_mint.to_account_info()
+    };
+
     let actual_fee = get_fee(
-        &ctx.accounts.nft_metadata,
+        &ref_account,
         fee_waiver,
         ctx.accounts.program_config.distribute_fee,
         fee,
@@ -309,6 +319,8 @@ pub fn transfer_in_handler(
 
     let asset = &mut ctx.accounts.asset;
 
+    let crow = &mut ctx.accounts.crow;
+
     ***asset = Asset::init(
         crow.key(),
         ctx.accounts.authority.key(),
@@ -322,22 +334,12 @@ pub fn transfer_in_handler(
     );
 
     if crow.nft_mint == Pubkey::default() {
-        if !matches!(
-            ctx.accounts
-                .nft_metadata
-                .token_standard
-                .as_ref()
-                .unwrap_or(&TokenStandard::NonFungible),
-            TokenStandard::NonFungible
-                | TokenStandard::ProgrammableNonFungible
-                | TokenStandard::NonFungibleEdition
-                | TokenStandard::ProgrammableNonFungibleEdition
-        ) {
-            return err!(CrowError::TokenNotNft);
-        }
-
-        let crow = &mut ctx.accounts.crow;
-        ***crow = Crow::init(ctx.accounts.nft_mint.key(), ctx.bumps.crow)
+        init_crow(
+            nft_mint,
+            nft_metadata.as_ref().map(|m| m.to_account_info()),
+            crow,
+            ctx.bumps.crow,
+        )?;
     }
 
     emit!(TransferInEvent {

@@ -10,12 +10,14 @@ use anchor_spl::{
     },
     token::{
         close_account, spl_token::state::AccountState, transfer, CloseAccount, Mint, Token,
-        TokenAccount, Transfer,
+        TokenAccount, Transfer, ID as SPL_TOKEN_ID,
     },
 };
+use mpl_core::Asset as CoreAsset;
+use nifty_asset::{accounts::Asset as NiftyAsset, types::State};
 
 use crate::{
-    constants::{FEES_WALLET, FEE_WAIVER, STAKE_PROGRAM},
+    constants::{CORE_PROGRAM, FEES_WALLET, FEE_WAIVER, NIFTY_PROGRAM, STAKE_PROGRAM},
     state::{Asset, AssetType, Crow, ProgramConfig, Vesting},
     utils::get_fee,
     CrowError, TransferOutEvent,
@@ -33,7 +35,7 @@ pub struct TransferOut<'info> {
     #[account(
         seeds = [
             b"CROW",
-            crow.nft_mint.as_ref(),
+            nft_mint.key().as_ref(),
         ],
         bump = crow.bump,
         has_one = nft_mint
@@ -56,7 +58,8 @@ pub struct TransferOut<'info> {
     #[account(mut)]
     pub owner: Signer<'info>,
 
-    pub nft_mint: Box<Account<'info, Mint>>,
+    /// CHECK: checked in instruction
+    pub nft_mint: AccountInfo<'info>,
 
     #[account(
         mut,
@@ -76,7 +79,7 @@ pub struct TransferOut<'info> {
         seeds::program = Metadata::id(),
         bump,
     )]
-    pub nft_metadata: Box<Account<'info, MetadataAccount>>,
+    pub nft_metadata: Option<Box<Account<'info, MetadataAccount>>>,
 
     #[account(
         seeds = [
@@ -84,7 +87,7 @@ pub struct TransferOut<'info> {
             Metadata::id().as_ref(),
             nft_mint.key().as_ref(),
             b"token_record",
-            nft_token.key().as_ref(),
+            nft_token.as_ref().unwrap().key().as_ref(),
         ],
         seeds::program = Metadata::id(),
         bump,
@@ -96,7 +99,7 @@ pub struct TransferOut<'info> {
         associated_token::authority = owner,
         constraint = nft_token.amount == 1 @ CrowError::Unauthorized
     )]
-    pub nft_token: Box<Account<'info, TokenAccount>>,
+    pub nft_token: Option<Box<Account<'info, TokenAccount>>>,
 
     pub token_mint: Option<Box<Account<'info, Mint>>>,
 
@@ -247,15 +250,27 @@ pub fn transfer_out_handler(
     let current_time = Clock::get().unwrap().unix_timestamp;
     let asset = &ctx.accounts.asset;
     let crow = &ctx.accounts.crow;
-    let metadata = &ctx.accounts.nft_metadata;
     let nft_mint_key = crow.nft_mint;
+    let nft_mint = &ctx.accounts.nft_mint;
     let fees_wallet = &ctx.accounts.fees_wallet;
     let bump = crow.bump;
 
     if !asset.fees_waived {
         let fee_waiver = ctx.accounts.fee_waiver.is_some();
+        let require_metadata_account = nft_mint.owner == &SPL_TOKEN_ID;
+
+        let ref_account = if require_metadata_account {
+            ctx.accounts
+                .nft_metadata
+                .as_ref()
+                .unwrap()
+                .to_account_info()
+        } else {
+            ctx.accounts.nft_mint.to_account_info()
+        };
+
         let actual_fee = get_fee(
-            &ctx.accounts.nft_metadata,
+            &ref_account,
             fee_waiver,
             ctx.accounts.program_config.claim_fee,
             fee,
@@ -278,26 +293,75 @@ pub fn transfer_out_handler(
         }
     }
 
-    let token_standard = metadata.token_standard.as_ref();
+    if nft_mint.owner == &SPL_TOKEN_ID {
+        let metadata = ctx.accounts.nft_metadata.as_ref().unwrap();
+        let token_standard = metadata.token_standard.as_ref();
 
-    if token_standard.is_some()
-        && **token_standard.as_ref().unwrap() == TokenStandard::ProgrammableNonFungible
-    {
-        let token_record = ctx
-            .accounts
-            .nft_token_record
-            .as_ref()
-            .expect("token_record expected");
+        if token_standard.is_some()
+            && **token_standard.as_ref().unwrap() == TokenStandard::ProgrammableNonFungible
+        {
+            let token_record = ctx
+                .accounts
+                .nft_token_record
+                .as_ref()
+                .expect("token_record expected");
 
-        if token_record.state != TokenState::Unlocked {
+            if token_record.state != TokenState::Unlocked {
+                // if locked, only allow transfer if locked using stake program
+                require!(ctx.accounts.delegate.is_some(), CrowError::TokenIsLocked);
+            }
+        } else {
+            if ctx.accounts.nft_token.as_ref().unwrap().state == AccountState::Frozen {
+                // if locked, only allow transfer if locked using stake program
+                require!(ctx.accounts.delegate.is_some(), CrowError::TokenIsLocked);
+            }
+        }
+    } else if nft_mint.owner == &NIFTY_PROGRAM {
+        let asset = NiftyAsset::try_from(nft_mint)?;
+        require_keys_eq!(
+            asset.owner,
+            ctx.accounts.owner.key(),
+            CrowError::Unauthorized
+        );
+        if asset.state == State::Locked {
             // if locked, only allow transfer if locked using stake program
             require!(ctx.accounts.delegate.is_some(), CrowError::TokenIsLocked);
+        }
+    } else if nft_mint.owner == &CORE_PROGRAM {
+        let asset = CoreAsset::try_from(nft_mint)?;
+        require_keys_eq!(
+            asset.base.owner,
+            ctx.accounts.owner.key(),
+            CrowError::Unauthorized
+        );
+
+        let freeze_delegate = &asset.plugin_list.freeze_delegate;
+        if freeze_delegate.is_some() {
+            let freeze_delegate = freeze_delegate.as_ref().unwrap();
+            if freeze_delegate.freeze_delegate.frozen {
+                // require delegate to be provided if frozen. Seeds already checked.
+                require!(ctx.accounts.delegate.is_some(), CrowError::TokenIsLocked);
+                // check delegate matches authority
+                require_keys_eq!(
+                    ctx.accounts.delegate.as_ref().unwrap().key(),
+                    *freeze_delegate.base.authority.address.as_ref().unwrap(),
+                    CrowError::TokenIsLocked
+                );
+            }
+        }
+
+        let permanent_freeze_delegate = asset.plugin_list.permanent_freeze_delegate;
+
+        if permanent_freeze_delegate.is_some()
+            && permanent_freeze_delegate
+                .unwrap()
+                .permanent_freeze_delegate
+                .frozen
+        {
+            return err!(CrowError::TokenIsLocked);
         }
     } else {
-        if ctx.accounts.nft_token.state == AccountState::Frozen {
-            // if locked, only allow transfer if locked using stake program
-            require!(ctx.accounts.delegate.is_some(), CrowError::TokenIsLocked);
-        }
+        return err!(CrowError::InvalidAssetType);
     }
 
     require_gte!(current_time, asset.start_time, CrowError::CannotClaimYet);

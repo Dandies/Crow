@@ -1,10 +1,7 @@
 use anchor_lang::prelude::*;
-use anchor_spl::{
-    metadata::{mpl_token_metadata::types::TokenStandard, Metadata, MetadataAccount},
-    token::Mint,
-};
+use anchor_spl::metadata::{Metadata, MetadataAccount};
 
-use crate::{state::Crow, CrowError};
+use crate::{state::Crow, utils::init_crow};
 
 #[derive(Accounts)]
 pub struct Init<'info> {
@@ -18,7 +15,7 @@ pub struct Init<'info> {
         ],
         bump,
     )]
-    pub crow: Account<'info, Crow>,
+    pub crow: Box<Account<'info, Crow>>,
 
     /// CHECK: this account is checked in the instruction
     pub nft_mint: AccountInfo<'info>,
@@ -41,27 +38,14 @@ pub struct Init<'info> {
 }
 
 pub fn init_handler(ctx: Context<Init>) -> Result<()> {
-    if ctx.accounts.nft_metadata.is_some() {
-        if !matches!(
-            ctx.accounts
-                .nft_metadata
-                .as_ref()
-                .unwrap()
-                .token_standard
-                .as_ref()
-                .unwrap_or(&TokenStandard::NonFungible),
-            TokenStandard::NonFungible
-                | TokenStandard::ProgrammableNonFungible
-                | TokenStandard::NonFungibleEdition
-                | TokenStandard::ProgrammableNonFungibleEdition
-        ) {
-            return err!(CrowError::TokenNotNft);
-        }
-    } else {
-        require!(ctx.accounts.nft_mint.)
-    }
-
-    let crow = &mut ctx.accounts.crow;
-    **crow = Crow::init(ctx.accounts.nft_mint.key(), ctx.bumps.crow);
+    init_crow(
+        &ctx.accounts.nft_mint,
+        ctx.accounts
+            .nft_metadata
+            .as_ref()
+            .map(|n| n.to_account_info()),
+        &mut ctx.accounts.crow,
+        ctx.bumps.crow,
+    )?;
     Ok(())
 }

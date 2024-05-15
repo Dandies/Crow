@@ -23,7 +23,8 @@
         {
           "name": "nftMetadata",
           "isMut": false,
-          "isSigner": false
+          "isSigner": false,
+          "isOptional": true
         },
         {
           "name": "asset",
@@ -181,7 +182,8 @@
         {
           "name": "nftMetadata",
           "isMut": false,
-          "isSigner": false
+          "isSigner": false,
+          "isOptional": true
         },
         {
           "name": "payer",
@@ -248,7 +250,8 @@
         {
           "name": "nftMetadata",
           "isMut": false,
-          "isSigner": false
+          "isSigner": false,
+          "isOptional": true
         },
         {
           "name": "nftTokenRecord",
@@ -259,7 +262,8 @@
         {
           "name": "nftToken",
           "isMut": false,
-          "isSigner": false
+          "isSigner": false,
+          "isOptional": true
         },
         {
           "name": "tokenMint",
@@ -743,6 +747,21 @@
       "code": 6016,
       "name": "FeeWaiverNotProvided",
       "msg": "Fee waiver required as signer if providing a custom fee"
+    },
+    {
+      "code": 6017,
+      "name": "MissingMetadata",
+      "msg": "Token metadata account is required for this asset type"
+    },
+    {
+      "code": 6018,
+      "name": "InvalidAssetType",
+      "msg": "Asset type not supported"
+    },
+    {
+      "code": 6019,
+      "name": "InvalidMetadata",
+      "msg": "This asset type doesn't expect a metadata account"
     }
   ],
   "metadata": {

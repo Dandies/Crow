@@ -29,9 +29,12 @@ import base58 from "bs58"
 import { MPL_TOKEN_AUTH_RULES_PROGRAM_ID } from "@metaplex-foundation/mpl-token-auth-rules"
 import { getFee, packTx } from "./utils"
 import { BN } from "bn.js"
-import { setComputeUnitLimit, setComputeUnitPrice } from "@metaplex-foundation/mpl-toolbox"
+import { SPL_TOKEN_PROGRAM_ID, setComputeUnitLimit, setComputeUnitPrice } from "@metaplex-foundation/mpl-toolbox"
 import { stakeProgram } from "./stake"
 import { string, publicKey as publicKeySerializer } from "@metaplex-foundation/umi/serializers"
+import { AssetType } from "../context/digital-assets"
+import { ASSET_PROGRAM_ID, State, fetchAsset } from "@nifty-oss/asset"
+import { MPL_CORE_PROGRAM_ID, fetchAssetV1 } from "@metaplex-foundation/mpl-core"
 
 let umi = createUmi(process.env.NEXT_PUBLIC_RPC_HOST!, { commitment: "processed" })
 
@@ -41,13 +44,36 @@ export async function getClaimTx(assetId: string, payerPk: string, feeLevel?: Pr
   const program = getProgram(umi.identity)
 
   const assetPk = publicKey(assetId)
+
   const asset = await program.account.asset.fetch(assetPk)
   const crow = fromWeb3JsPublicKey(asset.crow)
   const crowAccount = await program.account.crow.fetch(crow)
   const nftMint = fromWeb3JsPublicKey(crowAccount.nftMint)
 
-  const nftDa = await fetchDigitalAssetWithToken(umi, nftMint, getTokenAccount(nftMint, payer))
-  const isPnft = unwrapOptionRecursively(nftDa.metadata.tokenStandard) === TokenStandard.ProgrammableNonFungible
+  const acc = await umi.rpc.getAccount(nftMint)
+
+  let nftMetadata = null
+  let nftTokenRecord = null
+  let nftToken = null
+  let delegate = null
+
+  if (acc.exists && acc.owner === SPL_TOKEN_PROGRAM_ID) {
+    const nftDa = await fetchDigitalAssetWithToken(umi, nftMint, getTokenAccount(nftMint, payer))
+    const isPnft = unwrapOptionRecursively(nftDa.metadata.tokenStandard) === TokenStandard.ProgrammableNonFungible
+    delegate = isPnft
+      ? unwrapOptionRecursively(nftDa.tokenRecord?.delegate) || null
+      : unwrapOptionRecursively(nftDa.token.delegate) || null
+
+    nftMetadata = findMetadataPda(umi, { mint: nftMint })[0]
+    nftTokenRecord = isPnft ? getTokenRecordPda(nftMint, umi.identity.publicKey) : null
+    nftToken = getTokenAccount(nftMint, umi.identity.publicKey)
+  } else if (acc.exists && acc.owner === ASSET_PROGRAM_ID) {
+    const asset = await fetchAsset(umi, nftMint)
+    delegate = (asset.state === State.Locked && asset.delegate?.address) || null
+  } else if (acc.exists && acc.owner === MPL_CORE_PROGRAM_ID) {
+    const asset = await fetchAssetV1(umi, nftMint)
+    delegate = asset.freezeDelegate?.authority.address || null
+  }
 
   const tokenMint = asset.assetType.token || asset.assetType.nft ? fromWeb3JsPublicKey(asset.tokenMint) : null
   const escrowNftEdition = asset.assetType.nft && tokenMint ? findMasterEditionPda(umi, { mint: tokenMint })[0] : null
@@ -57,10 +83,6 @@ export async function getClaimTx(assetId: string, payerPk: string, feeLevel?: Pr
   const recipient = umi.identity.publicKey
   const tokenAccount = tokenMint ? getTokenAccount(tokenMint, crow) : null
   const destinationToken = tokenMint ? getTokenAccount(tokenMint, recipient) : null
-
-  const delegate = isPnft
-    ? unwrapOptionRecursively(nftDa.tokenRecord?.delegate) || null
-    : unwrapOptionRecursively(nftDa.token.delegate) || null
 
   let ownerTokenRecord: PublicKey | null = null
   let destinationTokenRecord: PublicKey | null = null
@@ -88,19 +110,20 @@ export async function getClaimTx(assetId: string, payerPk: string, feeLevel?: Pr
     signers.push(feeWaiver)
   }
 
-  const staker =
-    (
-      await stakeProgram.account.stakeRecord.all([
-        {
-          memcmp: {
-            bytes: nftDa.publicKey,
-            offset: 72,
-          },
+  const stakeRecord = (
+    await stakeProgram.account.stakeRecord.all([
+      {
+        memcmp: {
+          bytes: nftMint,
+          offset: 72,
         },
-      ])
-    )[0].account.staker || null
+      },
+    ])
+  )[0]
 
-  const [stakeRecord, stakeRecordBump] = staker
+  const staker = stakeRecord?.account?.staker || null
+
+  const [_, stakeRecordBump] = staker
     ? umi.eddsa.findPda(fromWeb3JsPublicKey(stakeProgram.programId), [
         string({ size: "variable" }).serialize("STAKE"),
         publicKeySerializer().serialize(fromWeb3JsPublicKey(staker)),
@@ -119,9 +142,9 @@ export async function getClaimTx(assetId: string, payerPk: string, feeLevel?: Pr
       tokenMint,
       delegate,
       nftMint,
-      nftMetadata: findMetadataPda(umi, { mint: nftMint })[0],
-      nftTokenRecord: isPnft ? getTokenRecordPda(nftMint, umi.identity.publicKey) : null,
-      nftToken: getTokenAccount(nftMint, umi.identity.publicKey),
+      nftMetadata,
+      nftTokenRecord,
+      nftToken,
       escrowNftEdition,
       escrowNftMetadata,
       tokenAccount,
@@ -167,6 +190,7 @@ export async function getClaimTx(assetId: string, payerPk: string, feeLevel?: Pr
 export async function getDistributeTx({
   payerPk,
   assetId,
+  assetType,
   type,
   vestingType,
   escrowNftPk,
@@ -179,6 +203,7 @@ export async function getDistributeTx({
 }: {
   payerPk: string
   assetId: string
+  assetType: AssetType
   type: string
   vestingType: string
   escrowNftPk?: string
@@ -194,10 +219,11 @@ export async function getDistributeTx({
   const program = getProgram(umi.identity)
 
   const nft = publicKey(assetId)
-  const da = await fetchDigitalAsset(umi, nft)
+
+  const nftMetadata = assetType === AssetType.LEGACY ? findMetadataPda(umi, { mint: nft })[0] : null
+
   const asset = generateSigner(umi)
 
-  const nftMetadata = findMetadataPda(umi, { mint: nft })[0]
   const crow = findCrowPda(nft)
   const vestingTypeEnum = {
     [vestingType]: {},
@@ -231,7 +257,7 @@ export async function getDistributeTx({
       ? createSignerFromKeypair(umi, umi.eddsa.createKeypairFromSecretKey(base58.decode(process.env.FEE_WAIVER!)))
       : null
 
-  const signers = [umi.identity]
+  const signers = [umi.identity, asset]
 
   if (feeWaiver) {
     signers.push(feeWaiver)
@@ -257,6 +283,7 @@ export async function getDistributeTx({
       escrowNftMetadata,
       tokenAccount,
       destinationToken,
+      authority: umi.identity.publicKey,
       feesWallet: FEES_WALLET,
       feeWaiver: feeWaiver ? feeWaiver.publicKey : null,
       metadataProgram: MPL_TOKEN_METADATA_PROGRAM_ID,
@@ -286,6 +313,7 @@ export async function getDistributeTx({
   )
 
   let built = await Promise.all(chunks.map((c) => c.buildWithLatestBlockhash(umi)))
+  built = await asset.signAllTransactions(built)
 
   if (feeWaiver) {
     built = await feeWaiver.signAllTransactions(built)

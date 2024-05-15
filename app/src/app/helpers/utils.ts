@@ -8,6 +8,10 @@ import { AssetWithPublicKey, CrowWithPublicKey } from "../types/types"
 import { findCrowPda } from "./pdas"
 import { setComputeUnitLimit, setComputeUnitPrice } from "@metaplex-foundation/mpl-toolbox"
 import { getPriorityFeesForTx } from "./helius"
+import { AssetType, UniversalAsset } from "../context/digital-assets"
+import { Asset, ExtensionType, State, getExtension } from "@nifty-oss/asset"
+import { AssetV1 } from "@metaplex-foundation/mpl-core"
+import { base64 } from "@metaplex-foundation/umi/serializers"
 
 export function shorten(address: string) {
   if (!address) {
@@ -52,7 +56,7 @@ export function toTitleCase(str: string) {
 }
 
 export function mapDasWithAccounts(
-  digitalAssets: DAS.GetAssetResponse[],
+  digitalAssets: UniversalAsset[],
   crows: CrowWithPublicKey[],
   assets: AssetWithPublicKey[]
 ) {
@@ -185,5 +189,50 @@ export async function sendAllTxsWithRetries(
   return {
     successes,
     errors,
+  }
+}
+
+export function mapToUniversalAsset(asset: DAS.GetAssetResponse | Asset | AssetV1) {
+  if ("id" in asset) {
+    const grouping = asset.grouping?.find((g) => g.group_key === "collection")
+    const collection = grouping?.group_value || asset.creators?.find((d) => d.verified)?.address
+    let collectionName = grouping?.collection_metadata?.name
+    if (!collectionName) {
+      collectionName = asset.content?.metadata.name.replace(/(\#).*/, "")
+    }
+    return {
+      id: publicKey(asset.id),
+      image: asset.content?.links?.image,
+      uri: asset.content?.json_uri,
+      name: asset.content?.metadata.name,
+      collection: collection ? publicKey(collection) : undefined,
+      assetType: AssetType.LEGACY,
+      collectionName,
+      locked: !!asset.ownership.delegated && asset.ownership.frozen,
+      owner: publicKey(asset.ownership.owner),
+    }
+  } else if ("extensions" in asset) {
+    const blob = getExtension(asset, ExtensionType.Blob)
+    return {
+      id: asset.publicKey,
+      uri: getExtension(asset, ExtensionType.Metadata)?.uri,
+      image: blob?.data ? base64.deserialize(new Uint8Array(blob.data))[0] : undefined,
+      name: asset.name,
+      contentType: blob?.contentType,
+      collection: asset.group!,
+      assetType: AssetType.NIFTY,
+      locked: asset.state === State.Locked,
+      owner: asset.owner,
+    }
+  } else {
+    return {
+      id: asset.publicKey,
+      uri: asset.uri,
+      name: asset.name,
+      collection: asset.updateAuthority.address!,
+      assetType: AssetType.CORE,
+      locked: asset.freezeDelegate?.frozen || asset.permanentFreezeDelegate?.frozen,
+      owner: asset.owner,
+    }
   }
 }

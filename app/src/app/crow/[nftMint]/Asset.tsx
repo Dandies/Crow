@@ -26,13 +26,12 @@ import { sendAllTxsWithRetries } from "@/app/helpers/utils"
 export function Asset({
   asset,
   owner,
-  fetchDigitalAsset,
+  getAccount,
 }: {
   asset: AssetWithPublicKey
   owner: string
-  fetchDigitalAsset: Function
+  getAccount: Function
 }) {
-  const { nftMint } = useParams()
   const { fetchAccounts } = useDigitalAssets()
   const [loading, setLoading] = useState(false)
   const { feeLevel } = usePriorityFees()
@@ -137,7 +136,7 @@ export function Asset({
     } catch (e: any) {
       console.error(e.message)
     } finally {
-      fetchDigitalAsset(nftMint)
+      getAccount()
       fetchAccounts()
       setLoading(false)
     }

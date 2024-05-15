@@ -32,12 +32,13 @@ import {
   TokenStandard,
   fetchDigitalAsset,
   fetchDigitalAssetWithAssociatedToken,
+  fetchJsonMetadata,
 } from "@metaplex-foundation/mpl-token-metadata"
 import { useUmi } from "../context/umi"
 import { useWallet } from "@solana/wallet-adapter-react"
 import { DateTimePicker } from "@mui/x-date-pickers"
 import { Dayjs } from "dayjs"
-import { useDigitalAssets } from "../context/digital-assets"
+import { UniversalAsset, useDigitalAssets } from "../context/digital-assets"
 import { DAS } from "helius-sdk"
 import toast from "react-hot-toast"
 import { ArrowForwardIos } from "@mui/icons-material"
@@ -54,7 +55,10 @@ import { TokenSelector } from "../components/TokenSelector"
 import { CrowContents } from "./CrowContents"
 import { useAnchor } from "../context/anchor"
 import { toWeb3JsPublicKey } from "@metaplex-foundation/umi-web3js-adapters"
-import { sendAllTxsWithRetries } from "../helpers/utils"
+import { mapToUniversalAsset, sendAllTxsWithRetries } from "../helpers/utils"
+import { SPL_TOKEN_PROGRAM_ID } from "@metaplex-foundation/mpl-toolbox"
+import { ASSET_PROGRAM_ID, fetchAsset } from "@nifty-oss/asset"
+import { MPL_CORE_PROGRAM_ID, fetchAssetV1 } from "@metaplex-foundation/mpl-core"
 
 type DigitalAssetWithTokenAndJson = DigitalAssetWithToken & {
   json: JsonMetadata
@@ -69,7 +73,7 @@ export default function Load() {
   const [nftMintError, setNftMintError] = useState<string | null>(null)
   const [type, setType] = useState("token")
   const [amount, setAmount] = useState("")
-  const [da, setDa] = useState<DAS.GetAssetResponse | null>(null)
+  const [da, setDa] = useState<UniversalAsset | null>(null)
   const [loading, setLoading] = useState(false)
   const [tokenMint, setTokenMint] = useState("")
   const [token, setToken] = useState<DigitalAssetWithToken | null>(null)
@@ -111,6 +115,20 @@ export default function Load() {
     setChoosingType("destination")
     toggleNftModalShowing()
   }
+
+  useEffect(() => {
+    if (da?.image || !da?.uri) {
+      return
+    }
+
+    ;(async () => {
+      const json = await fetchJsonMetadata(umi, da?.uri!)
+      setDa({
+        ...da,
+        image: json.image,
+      })
+    })()
+  }, [da])
 
   useEffect(() => {
     if (!hashlist) {
@@ -184,33 +202,46 @@ export default function Load() {
     ;(async () => {
       try {
         const pk = publicKey(nftMint)
-        const da = await getDigitalAsset(pk)
-        const tokenStandard = (da.content?.metadata as any).token_standard
-        if (!tokenStandard) {
-          const da = await fetchDigitalAsset(umi, pk)
-          const tokenStandard = unwrapOptionRecursively(da.metadata.tokenStandard)
+        const acc = await umi.rpc.getAccount(pk)
+
+        if (acc.exists && acc.owner === SPL_TOKEN_PROGRAM_ID) {
+          const da = await getDigitalAsset(pk)
+          const tokenStandard = (da.content?.metadata as any).token_standard
           if (!tokenStandard) {
-            const isNonFungible = da.mint.decimals === 0 && da.mint.supply === 1n
-            if (!isNonFungible) {
-              throw new Error("Only non-fungible assets can be used")
+            const da = await fetchDigitalAsset(umi, pk)
+            const tokenStandard = unwrapOptionRecursively(da.metadata.tokenStandard)
+            if (!tokenStandard) {
+              const isNonFungible = da.mint.decimals === 0 && da.mint.supply === 1n
+              if (!isNonFungible) {
+                throw new Error("Only non-fungible assets can be used")
+              }
+            } else if (
+              ![
+                TokenStandard.NonFungible,
+                TokenStandard.NonFungibleEdition,
+                TokenStandard.ProgrammableNonFungible,
+                TokenStandard.ProgrammableNonFungibleEdition,
+              ].includes(tokenStandard)
+            ) {
+              throw new Error("Invalid token standard")
             }
-          } else if (
-            ![
-              TokenStandard.NonFungible,
-              TokenStandard.NonFungibleEdition,
-              TokenStandard.ProgrammableNonFungible,
-              TokenStandard.ProgrammableNonFungibleEdition,
-            ].includes(tokenStandard)
-          ) {
-            throw new Error("Invalid token standard")
+          } else {
+            if (!["ProgrammableNonFungible", "NonFungible"].includes(tokenStandard)) {
+              throw new Error("Only non-fungible tokens can be used")
+            }
           }
+          setDa(mapToUniversalAsset(da))
+        } else if (acc.exists && acc.owner === ASSET_PROGRAM_ID) {
+          const asset = await fetchAsset(umi, pk)
+          setDa(mapToUniversalAsset(asset))
+        } else if (acc.exists && acc.owner === MPL_CORE_PROGRAM_ID) {
+          const asset = await fetchAssetV1(umi, pk)
+          setDa(mapToUniversalAsset(asset))
         } else {
-          if (!["ProgrammableNonFungible", "NonFungible"].includes(tokenStandard)) {
-            throw new Error("Only non-fungible tokens can be used")
-          }
+          throw new Error("Unsupported asset type")
         }
-        setDa(da)
       } catch (err: any) {
+        console.log(err)
         if (err.name === "InvalidPublicKeyError") {
           setNftMintError("Invalid public key")
         } else if (err.message.includes("Multiple valid token accounts found")) {
@@ -264,6 +295,7 @@ export default function Load() {
           const { serialized, txFee } = await getDistributeTx({
             payerPk: umi.identity.publicKey,
             assetId: da.id,
+            assetType: da.assetType,
             type,
             vestingType,
             escrowNftPk: escrowDa?.id,
@@ -734,7 +766,7 @@ export default function Load() {
                               </Box>
 
                               <img
-                                src={`https://img-cdn.magiceden.dev/rs:fill:400:400:0:0/plain/${da.content?.links?.image}`}
+                                src={`https://img-cdn.magiceden.dev/rs:fill:400:400:0:0/plain/${da.image}`}
                                 style={{ display: "block", width: "100%" }}
                               />
                             </Box>

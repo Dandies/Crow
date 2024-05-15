@@ -6,7 +6,7 @@ import { DAS } from "helius-sdk"
 import { mapValues, groupBy } from "lodash"
 import { useState, useEffect } from "react"
 import { useAnchor } from "../context/anchor"
-import { useDigitalAssets } from "../context/digital-assets"
+import { UniversalAsset, useDigitalAssets } from "../context/digital-assets"
 import { findCrowPda } from "../helpers/pdas"
 import { AssetWithPublicKey, CrowWithPublicKey } from "../types/types"
 import Link from "next/link"
@@ -15,7 +15,7 @@ export function CrowContents({
   da,
   resolvePromise,
 }: {
-  da: DAS.GetAssetResponse
+  da: UniversalAsset
   resolvePromise?: (value: void | PromiseLike<void>) => void
 }) {
   const { fetchAccounts } = useDigitalAssets()

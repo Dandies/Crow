@@ -23,7 +23,8 @@ export type Crow = {
         {
           "name": "nftMetadata",
           "isMut": false,
-          "isSigner": false
+          "isSigner": false,
+          "isOptional": true
         },
         {
           "name": "asset",
@@ -181,7 +182,8 @@ export type Crow = {
         {
           "name": "nftMetadata",
           "isMut": false,
-          "isSigner": false
+          "isSigner": false,
+          "isOptional": true
         },
         {
           "name": "payer",
@@ -248,7 +250,8 @@ export type Crow = {
         {
           "name": "nftMetadata",
           "isMut": false,
-          "isSigner": false
+          "isSigner": false,
+          "isOptional": true
         },
         {
           "name": "nftTokenRecord",
@@ -259,7 +262,8 @@ export type Crow = {
         {
           "name": "nftToken",
           "isMut": false,
-          "isSigner": false
+          "isSigner": false,
+          "isOptional": true
         },
         {
           "name": "tokenMint",
@@ -777,6 +781,21 @@ export type Crow = {
       "code": 6016,
       "name": "FeeWaiverNotProvided",
       "msg": "Fee waiver required as signer if providing a custom fee"
+    },
+    {
+      "code": 6017,
+      "name": "MissingMetadata",
+      "msg": "Token metadata account is required for this asset type"
+    },
+    {
+      "code": 6018,
+      "name": "InvalidAssetType",
+      "msg": "Asset type not supported"
+    },
+    {
+      "code": 6019,
+      "name": "InvalidMetadata",
+      "msg": "This asset type doesn't expect a metadata account"
     }
   ]
 };
@@ -806,7 +825,8 @@ export const IDL: Crow = {
         {
           "name": "nftMetadata",
           "isMut": false,
-          "isSigner": false
+          "isSigner": false,
+          "isOptional": true
         },
         {
           "name": "asset",
@@ -964,7 +984,8 @@ export const IDL: Crow = {
         {
           "name": "nftMetadata",
           "isMut": false,
-          "isSigner": false
+          "isSigner": false,
+          "isOptional": true
         },
         {
           "name": "payer",
@@ -1031,7 +1052,8 @@ export const IDL: Crow = {
         {
           "name": "nftMetadata",
           "isMut": false,
-          "isSigner": false
+          "isSigner": false,
+          "isOptional": true
         },
         {
           "name": "nftTokenRecord",
@@ -1042,7 +1064,8 @@ export const IDL: Crow = {
         {
           "name": "nftToken",
           "isMut": false,
-          "isSigner": false
+          "isSigner": false,
+          "isOptional": true
         },
         {
           "name": "tokenMint",
@@ -1560,6 +1583,21 @@ export const IDL: Crow = {
       "code": 6016,
       "name": "FeeWaiverNotProvided",
       "msg": "Fee waiver required as signer if providing a custom fee"
+    },
+    {
+      "code": 6017,
+      "name": "MissingMetadata",
+      "msg": "Token metadata account is required for this asset type"
+    },
+    {
+      "code": 6018,
+      "name": "InvalidAssetType",
+      "msg": "Asset type not supported"
+    },
+    {
+      "code": 6019,
+      "name": "InvalidMetadata",
+      "msg": "This asset type doesn't expect a metadata account"
     }
   ]
 };

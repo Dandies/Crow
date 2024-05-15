@@ -2,6 +2,7 @@ import * as anchor from "@coral-xyz/anchor"
 import { Program } from "@coral-xyz/anchor"
 import { Crow } from "../target/types/crow"
 import { MPL_TOKEN_AUTH_RULES_PROGRAM_ID } from "@metaplex-foundation/mpl-token-auth-rules"
+import { string, publicKey as publicKeySerializer } from "@metaplex-foundation/umi/src/serializers"
 import {
   FEE_WAIVER,
   findCrowPda,
@@ -15,6 +16,7 @@ import {
   PublicKey,
   createSignerFromKeypair,
   generateSigner,
+  publicKey,
   sol,
   tokenAmount,
   transactionBuilder,
@@ -51,6 +53,16 @@ import { createToken } from "./helpers/create-token"
 import { createAccount, createAssociatedToken, safeFetchToken } from "@metaplex-foundation/mpl-toolbox"
 import { createCollection } from "./helpers/create-collection"
 import { KeypairSigner } from "@metaplex-foundation/umi/dist/types/Keypair"
+import { DelegateRole, approve, create, delegateInput, lock, revoke, unlock } from "@nifty-oss/asset"
+import {
+  addPluginV1,
+  createPlugin,
+  createV1,
+  fetchAssetV1,
+  freezeAsset,
+  pluginAuthority,
+  thawAsset,
+} from "@metaplex-foundation/mpl-core"
 
 const TX_FEE = 5000n
 const DISTRIBUTE_FEE = sol(0.001).basisPoints
@@ -145,7 +157,7 @@ describe("esCROW", () => {
         await expectFail(
           () =>
             userProgram.methods
-              .transferOut(null)
+              .transferOut(null, null)
               .accounts({
                 crow,
                 programConfig: findProgramConfigPda(),
@@ -153,6 +165,7 @@ describe("esCROW", () => {
                 feeWaiver: null,
                 asset: asset.publicKey,
                 delegate: null,
+                staker: null,
                 tokenMint: null,
                 nftMint: nft.publicKey,
                 nftMetadata: nft.metadata.publicKey,
@@ -198,10 +211,11 @@ describe("esCROW", () => {
             })
           )
           .sendAndConfirm(umi)
+
         await expectFail(
           () =>
             user2Program.methods
-              .transferOut(null)
+              .transferOut(null, null)
               .accounts({
                 crow,
                 programConfig: findProgramConfigPda(),
@@ -210,6 +224,7 @@ describe("esCROW", () => {
                 asset: asset.publicKey,
                 tokenMint: null,
                 delegate: null,
+                staker: null,
                 nftMint: nft.publicKey,
                 nftMetadata: nft.metadata.publicKey,
                 nftToken: getTokenAccount(nft.publicKey, user2.publicKey),
@@ -257,7 +272,7 @@ describe("esCROW", () => {
 
         const balBefore = await umi.rpc.getBalance(user2.publicKey)
         await user2Program.methods
-          .transferOut(null)
+          .transferOut(null, null)
           .accounts({
             crow,
             programConfig: findProgramConfigPda(),
@@ -266,6 +281,7 @@ describe("esCROW", () => {
             asset: asset.publicKey,
             tokenMint: null,
             delegate: null,
+            staker: null,
             nftMint: nft.publicKey,
             nftMetadata: nft.metadata.publicKey,
             nftTokenRecord: getTokenRecordPda(nft.publicKey, user2.publicKey),
@@ -347,7 +363,7 @@ describe("esCROW", () => {
         await expectFail(
           () =>
             user2Program.methods
-              .transferOut(null)
+              .transferOut(null, null)
               .accounts({
                 crow,
                 programConfig: findProgramConfigPda(),
@@ -356,6 +372,7 @@ describe("esCROW", () => {
                 asset: asset.publicKey,
                 tokenMint,
                 delegate: null,
+                staker: null,
                 nftMint: nft.publicKey,
                 nftMetadata: nft.metadata.publicKey,
                 nftTokenRecord: getTokenRecordPda(nft.publicKey, user2.publicKey),
@@ -383,7 +400,7 @@ describe("esCROW", () => {
         const tokenBalBefore = (await safeFetchToken(umi, getTokenAccount(tokenMint, user2.publicKey)))?.amount || 0n
         const balBefore = await umi.rpc.getBalance(user2.publicKey)
         await user2Program.methods
-          .transferOut(null)
+          .transferOut(null, null)
           .accounts({
             crow,
             programConfig: findProgramConfigPda(),
@@ -392,6 +409,7 @@ describe("esCROW", () => {
             asset: asset.publicKey,
             tokenMint,
             delegate: null,
+            staker: null,
             nftMint: nft.publicKey,
             nftMetadata: nft.metadata.publicKey,
             nftTokenRecord: getTokenRecordPda(nft.publicKey, user2.publicKey),
@@ -497,13 +515,14 @@ describe("esCROW", () => {
         await expectFail(
           () =>
             user2Program.methods
-              .transferOut(null)
+              .transferOut(null, null)
               .accounts({
                 crow,
                 programConfig: findProgramConfigPda(),
                 feesWallet: FEES_WALLET,
                 feeWaiver: null,
                 delegate: null,
+                staker: null,
                 asset: asset.publicKey,
                 tokenMint: escrowNft.publicKey,
                 nftMint: nft.publicKey,
@@ -538,7 +557,7 @@ describe("esCROW", () => {
         const tokenLamports = token.exists && token.lamports
         const feesWalletBefore = await umi.rpc.getBalance(FEES_WALLET)
         await user3Program.methods
-          .transferOut(null)
+          .transferOut(null, null)
           .accounts({
             crow,
             programConfig: findProgramConfigPda(),
@@ -548,6 +567,7 @@ describe("esCROW", () => {
             tokenMint: escrowNft.publicKey,
             nftMint: nft.publicKey,
             delegate: null,
+            staker: null,
             nftMetadata: nft.metadata.publicKey,
             nftTokenRecord: getTokenRecordPda(nft.publicKey, user3.publicKey),
             nftToken: getTokenAccount(nft.publicKey, user3.publicKey),
@@ -643,7 +663,7 @@ describe("esCROW", () => {
         const token = await umi.rpc.getAccount(getTokenAccount(escrowNft.publicKey, crow))
         const tokenLamports = token.exists && token.lamports
         await user2Program.methods
-          .transferOut(null)
+          .transferOut(null, null)
           .accounts({
             crow,
             programConfig: findProgramConfigPda(),
@@ -653,6 +673,7 @@ describe("esCROW", () => {
             tokenMint: escrowNft.publicKey,
             nftMint: nft.publicKey,
             delegate: null,
+            staker: null,
             nftMetadata: nft.metadata.publicKey,
             nftTokenRecord: getTokenRecordPda(nft.publicKey, user2.publicKey),
             nftToken: getTokenAccount(nft.publicKey, user2.publicKey),
@@ -792,7 +813,7 @@ describe("esCROW", () => {
         const accBal = await umi.rpc.getBalance(asset1.publicKey)
         const userBalBefore = await umi.rpc.getBalance(user2.publicKey)
         await user2Program.methods
-          .transferOut(null)
+          .transferOut(null, null)
           .accounts({
             crow,
             programConfig: findProgramConfigPda(),
@@ -801,6 +822,7 @@ describe("esCROW", () => {
             asset: asset1.publicKey,
             tokenMint,
             delegate: null,
+            staker: null,
             nftMint: nft.publicKey,
             nftMetadata: nft.metadata.publicKey,
             nftTokenRecord: getTokenRecordPda(nft.publicKey, user2.publicKey),
@@ -851,7 +873,7 @@ describe("esCROW", () => {
         const feesWalletBefore = await umi.rpc.getBalance(FEES_WALLET)
         const claimerBalBefore = await umi.rpc.getBalance(user2.publicKey)
         await user2Program.methods
-          .transferOut(null)
+          .transferOut(null, null)
           .accounts({
             crow,
             programConfig: findProgramConfigPda(),
@@ -860,6 +882,7 @@ describe("esCROW", () => {
             asset: asset2.publicKey,
             tokenMint,
             delegate: null,
+            staker: null,
             nftMint: nft.publicKey,
             nftMetadata: nft.metadata.publicKey,
             nftTokenRecord: getTokenRecordPda(nft.publicKey, user2.publicKey),
@@ -987,7 +1010,7 @@ describe("esCROW", () => {
           await sleep(1000)
           const balBefore = await getTokenAmount(tokenMint, user2.publicKey)
           await user2Program.methods
-            .transferOut(null)
+            .transferOut(null, null)
             .accounts({
               crow,
               programConfig: findProgramConfigPda(),
@@ -996,6 +1019,7 @@ describe("esCROW", () => {
               asset: asset.publicKey,
               tokenMint,
               delegate: null,
+              staker: null,
               nftMint: nft.publicKey,
               nftMetadata: nft.metadata.publicKey,
               nftTokenRecord: getTokenRecordPda(nft.publicKey, user2.publicKey),
@@ -1033,7 +1057,7 @@ describe("esCROW", () => {
           const balBefore = await getTokenAmount(tokenMint, user2.publicKey)
 
           await user2Program.methods
-            .transferOut(null)
+            .transferOut(null, null)
             .accounts({
               crow,
               programConfig: findProgramConfigPda(),
@@ -1042,6 +1066,7 @@ describe("esCROW", () => {
               asset: asset.publicKey,
               tokenMint,
               delegate: null,
+              staker: null,
               nftMint: nft.publicKey,
               nftMetadata: nft.metadata.publicKey,
               nftTokenRecord: getTokenRecordPda(nft.publicKey, user2.publicKey),
@@ -1074,7 +1099,7 @@ describe("esCROW", () => {
           await sleep(3000)
           const balBefore = await getTokenAmount(tokenMint, user2.publicKey)
           await user2Program.methods
-            .transferOut(null)
+            .transferOut(null, null)
             .accounts({
               crow,
               programConfig: findProgramConfigPda(),
@@ -1083,6 +1108,7 @@ describe("esCROW", () => {
               asset: asset.publicKey,
               tokenMint,
               delegate: null,
+              staker: null,
               nftMint: nft.publicKey,
               nftMetadata: nft.metadata.publicKey,
               nftTokenRecord: getTokenRecordPda(nft.publicKey, user2.publicKey),
@@ -1234,7 +1260,7 @@ describe("esCROW", () => {
           await expectFail(
             () =>
               user2Program.methods
-                .transferOut(null)
+                .transferOut(null, null)
                 .accounts({
                   crow,
                   programConfig: findProgramConfigPda(),
@@ -1243,6 +1269,7 @@ describe("esCROW", () => {
                   asset: asset.publicKey,
                   tokenMint: null,
                   delegate: null,
+                  staker: null,
                   nftMint: nft.publicKey,
                   nftMetadata: nft.metadata.publicKey,
                   nftTokenRecord: getTokenRecordPda(nft.publicKey, user2.publicKey),
@@ -1269,7 +1296,7 @@ describe("esCROW", () => {
           await sleep(4000)
           const balBefore = await umi.rpc.getBalance(user2.publicKey)
           await user2Program.methods
-            .transferOut(null)
+            .transferOut(null, null)
             .accounts({
               crow,
               programConfig: findProgramConfigPda(),
@@ -1278,6 +1305,7 @@ describe("esCROW", () => {
               asset: asset.publicKey,
               tokenMint: null,
               delegate: null,
+              staker: null,
               nftMint: nft.publicKey,
               nftMetadata: nft.metadata.publicKey,
               nftTokenRecord: getTokenRecordPda(nft.publicKey, user2.publicKey),
@@ -1310,7 +1338,7 @@ describe("esCROW", () => {
           await expectFail(
             () =>
               user2Program.methods
-                .transferOut(null)
+                .transferOut(null, null)
                 .accounts({
                   crow,
                   programConfig: findProgramConfigPda(),
@@ -1319,6 +1347,7 @@ describe("esCROW", () => {
                   asset: asset.publicKey,
                   tokenMint: null,
                   delegate: null,
+                  staker: null,
                   nftMint: nft.publicKey,
                   nftMetadata: nft.metadata.publicKey,
                   nftTokenRecord: getTokenRecordPda(nft.publicKey, user2.publicKey),
@@ -1345,7 +1374,7 @@ describe("esCROW", () => {
           await sleep(3000)
           const balBefore = await umi.rpc.getBalance(user2.publicKey)
           await user2Program.methods
-            .transferOut(null)
+            .transferOut(null, null)
             .accounts({
               crow,
               programConfig: findProgramConfigPda(),
@@ -1354,6 +1383,7 @@ describe("esCROW", () => {
               asset: asset.publicKey,
               tokenMint: null,
               delegate: null,
+              staker: null,
               nftMint: nft.publicKey,
               nftMetadata: nft.metadata.publicKey,
               nftTokenRecord: getTokenRecordPda(nft.publicKey, user2.publicKey),
@@ -1440,7 +1470,7 @@ describe("esCROW", () => {
       it("doesn't cost anything to claim from a dandy", async () => {
         const balBefore = await umi.rpc.getBalance(user2.publicKey)
         await user2Program.methods
-          .transferOut(null)
+          .transferOut(null, null)
           .accounts({
             crow,
             programConfig: findProgramConfigPda(),
@@ -1449,6 +1479,7 @@ describe("esCROW", () => {
             asset: asset.publicKey,
             tokenMint: null,
             delegate: null,
+            staker: null,
             nftMint: dandy.publicKey,
             nftMetadata: dandy.metadata.publicKey,
             nftTokenRecord: getTokenRecordPda(dandy.publicKey, user2.publicKey),
@@ -1522,7 +1553,7 @@ describe("esCROW", () => {
       it("doesn't cost anything to claim", async () => {
         const balBefore = await umi.rpc.getBalance(user2.publicKey)
         await user2Program.methods
-          .transferOut(null)
+          .transferOut(null, null)
           .accounts({
             crow,
             programConfig: findProgramConfigPda(),
@@ -1531,6 +1562,7 @@ describe("esCROW", () => {
             asset: asset.publicKey,
             tokenMint: null,
             delegate: null,
+            staker: null,
             nftMint: nft.publicKey,
             nftMetadata: nft.metadata.publicKey,
             nftTokenRecord: getTokenRecordPda(nft.publicKey, user2.publicKey),
@@ -1555,295 +1587,296 @@ describe("esCROW", () => {
       })
     })
 
-    describe("Staked pNFT", () => {
-      let nft: DigitalAsset
-      let crow: PublicKey
-      const asset = generateSigner(umi)
+    // describe("Staked pNFT", () => {
+    //   let nft: DigitalAsset
+    //   let crow: PublicKey
+    //   const asset = generateSigner(umi)
 
-      before(async () => {
-        nft = await createNft(umi, true, undefined, user2.publicKey)
-        const delegate = generateSigner(umi)
-        await transactionBuilder()
-          .add(
-            createAccount(umi, {
-              newAccount: delegate,
-              lamports: sol(0.1),
-              space: 0,
-              programId: STAKE_PROGRAM,
-            })
-          )
-          .add(
-            delegateUtilityV1(umi, {
-              mint: nft.publicKey,
-              delegate: delegate.publicKey,
-              tokenStandard: TokenStandard.ProgrammableNonFungible,
-              authority: user2,
-              token: getTokenAccount(nft.publicKey, user2.publicKey),
-              authorizationRules: unwrapOptionRecursively(nft.metadata.programmableConfig).ruleSet,
-            })
-          )
-          .add(
-            lockV1(umi, {
-              mint: nft.publicKey,
-              authority: delegate,
-              tokenStandard: TokenStandard.ProgrammableNonFungible,
-              token: getTokenAccount(nft.publicKey, user2.publicKey),
-            })
-          )
-          .sendAndConfirm(umi)
-        crow = findCrowPda(nft.publicKey)
-      })
+    //   before(async () => {
+    //     nft = await createNft(umi, true, undefined, user2.publicKey)
+    //     const delegate = generateSigner(umi)
+    //     await transactionBuilder()
+    //       .add(
+    //         createAccount(umi, {
+    //           newAccount: delegate,
+    //           lamports: sol(0.1),
+    //           space: 0,
+    //           programId: STAKE_PROGRAM,
+    //         })
+    //       )
+    //       .add(
+    //         delegateUtilityV1(umi, {
+    //           mint: nft.publicKey,
+    //           delegate: delegate.publicKey,
+    //           tokenStandard: TokenStandard.ProgrammableNonFungible,
+    //           authority: user2,
+    //           token: getTokenAccount(nft.publicKey, user2.publicKey),
+    //           authorizationRules: unwrapOptionRecursively(nft.metadata.programmableConfig).ruleSet,
+    //         })
+    //       )
+    //       .add(
+    //         lockV1(umi, {
+    //           mint: nft.publicKey,
+    //           authority: delegate,
+    //           tokenStandard: TokenStandard.ProgrammableNonFungible,
+    //           token: getTokenAccount(nft.publicKey, user2.publicKey),
+    //         })
+    //       )
+    //       .sendAndConfirm(umi)
+    //     crow = findCrowPda(nft.publicKey)
+    //   })
 
-      it("can transfer in", async () => {
-        await userProgram.methods
-          .transferIn(
-            { sol: {} },
-            new BN(sol(1).basisPoints.toString()),
-            null,
-            null,
-            { none: {} },
-            new BN(sol(0.001).basisPoints.toString())
-          )
-          .accounts({
-            crow,
-            programConfig: findProgramConfigPda(),
-            feesWallet: FEES_WALLET,
-            feeWaiver: FEE_WAIVER.publicKey,
-            asset: asset.publicKey,
-            tokenMint: null,
-            nftMint: nft.publicKey,
-            nftMetadata: nft.metadata.publicKey,
-            escrowNftEdition: null,
-            escrowNftMetadata: null,
-            tokenAccount: null,
-            destinationToken: null,
-            ownerTokenRecord: null,
-            destinationTokenRecord: null,
-            metadataProgram: MPL_TOKEN_METADATA_PROGRAM_ID,
-            sysvarInstructions: anchor.web3.SYSVAR_INSTRUCTIONS_PUBKEY,
-            authRules: null,
-            authRulesProgram: null,
-          })
-          .signers([toWeb3JsKeypair(asset), toWeb3JsKeypair(FEE_WAIVER)])
-          .rpc()
-      })
+    //   it("can transfer in", async () => {
+    //     await userProgram.methods
+    //       .transferIn(
+    //         { sol: {} },
+    //         new BN(sol(1).basisPoints.toString()),
+    //         null,
+    //         null,
+    //         { none: {} },
+    //         new BN(sol(0.001).basisPoints.toString())
+    //       )
+    //       .accounts({
+    //         crow,
+    //         programConfig: findProgramConfigPda(),
+    //         feesWallet: FEES_WALLET,
+    //         feeWaiver: FEE_WAIVER.publicKey,
+    //         asset: asset.publicKey,
+    //         tokenMint: null,
+    //         nftMint: nft.publicKey,
+    //         nftMetadata: nft.metadata.publicKey,
+    //         escrowNftEdition: null,
+    //         escrowNftMetadata: null,
+    //         tokenAccount: null,
+    //         destinationToken: null,
+    //         ownerTokenRecord: null,
+    //         destinationTokenRecord: null,
+    //         metadataProgram: MPL_TOKEN_METADATA_PROGRAM_ID,
+    //         sysvarInstructions: anchor.web3.SYSVAR_INSTRUCTIONS_PUBKEY,
+    //         authRules: null,
+    //         authRulesProgram: null,
+    //       })
+    //       .signers([toWeb3JsKeypair(asset), toWeb3JsKeypair(FEE_WAIVER)])
+    //       .rpc()
+    //   })
 
-      it("cannot transfer out without providing delegate", async () => {
-        await expectFail(
-          () =>
-            user2Program.methods
-              .transferOut(null)
-              .accounts({
-                crow,
-                programConfig: findProgramConfigPda(),
-                feesWallet: FEES_WALLET,
-                feeWaiver: null,
-                asset: asset.publicKey,
-                tokenMint: null,
-                delegate: null,
-                nftMint: nft.publicKey,
-                nftMetadata: nft.metadata.publicKey,
-                nftTokenRecord: getTokenRecordPda(nft.publicKey, user2.publicKey),
-                nftToken: getTokenAccount(nft.publicKey, user2.publicKey),
-                escrowNftEdition: null,
-                escrowNftMetadata: null,
-                tokenAccount: null,
-                destinationToken: null,
-                ownerTokenRecord: null,
-                destinationTokenRecord: null,
-                metadataProgram: MPL_TOKEN_METADATA_PROGRAM_ID,
-                sysvarInstructions: anchor.web3.SYSVAR_INSTRUCTIONS_PUBKEY,
-                authRules: null,
-                authRulesProgram: null,
-                authority: user.publicKey,
-                recipient: user2.publicKey,
-              })
-              .rpc(),
-          (err) => assertErrorCode(err, "TokenIsLocked")
-        )
-      })
+    //   it("cannot transfer out without providing delegate", async () => {
+    //     await expectFail(
+    //       () =>
+    //         user2Program.methods
+    //           .transferOut(null, null)
+    //           .accounts({
+    //             crow,
+    //             programConfig: findProgramConfigPda(),
+    //             feesWallet: FEES_WALLET,
+    //             feeWaiver: null,
+    //             asset: asset.publicKey,
+    //             tokenMint: null,
+    //             delegate: null,
+    //             staker: null,
+    //             nftMint: nft.publicKey,
+    //             nftMetadata: nft.metadata.publicKey,
+    //             nftTokenRecord: getTokenRecordPda(nft.publicKey, user2.publicKey),
+    //             nftToken: getTokenAccount(nft.publicKey, user2.publicKey),
+    //             escrowNftEdition: null,
+    //             escrowNftMetadata: null,
+    //             tokenAccount: null,
+    //             destinationToken: null,
+    //             ownerTokenRecord: null,
+    //             destinationTokenRecord: null,
+    //             metadataProgram: MPL_TOKEN_METADATA_PROGRAM_ID,
+    //             sysvarInstructions: anchor.web3.SYSVAR_INSTRUCTIONS_PUBKEY,
+    //             authRules: null,
+    //             authRulesProgram: null,
+    //             authority: user.publicKey,
+    //             recipient: user2.publicKey,
+    //           })
+    //           .rpc(),
+    //       (err) => assertErrorCode(err, "TokenIsLocked")
+    //     )
+    //   })
 
-      it("can transfer out if delegate is expected owner", async () => {
-        const daWithToken = await fetchDigitalAssetWithToken(
-          umi,
-          nft.publicKey,
-          getTokenAccount(nft.publicKey, user2.publicKey)
-        )
-        await user2Program.methods
-          .transferOut(null)
-          .accounts({
-            crow,
-            programConfig: findProgramConfigPda(),
-            feesWallet: FEES_WALLET,
-            feeWaiver: null,
-            asset: asset.publicKey,
-            tokenMint: null,
-            delegate: unwrapOptionRecursively(daWithToken.tokenRecord.delegate),
-            nftMint: nft.publicKey,
-            nftMetadata: nft.metadata.publicKey,
-            nftTokenRecord: getTokenRecordPda(nft.publicKey, user2.publicKey),
-            nftToken: getTokenAccount(nft.publicKey, user2.publicKey),
-            escrowNftEdition: null,
-            escrowNftMetadata: null,
-            tokenAccount: null,
-            destinationToken: null,
-            ownerTokenRecord: null,
-            destinationTokenRecord: null,
-            metadataProgram: MPL_TOKEN_METADATA_PROGRAM_ID,
-            sysvarInstructions: anchor.web3.SYSVAR_INSTRUCTIONS_PUBKEY,
-            authRules: null,
-            authRulesProgram: null,
-            authority: user.publicKey,
-            recipient: user2.publicKey,
-          })
-          .rpc()
-      })
-    })
+    //   it("can transfer out if delegate is expected owner", async () => {
+    //     const daWithToken = await fetchDigitalAssetWithToken(
+    //       umi,
+    //       nft.publicKey,
+    //       getTokenAccount(nft.publicKey, user2.publicKey)
+    //     )
+    //     await user2Program.methods
+    //       .transferOut(null, null)
+    //       .accounts({
+    //         crow,
+    //         programConfig: findProgramConfigPda(),
+    //         feesWallet: FEES_WALLET,
+    //         feeWaiver: null,
+    //         asset: asset.publicKey,
+    //         tokenMint: null,
+    //         delegate: unwrapOptionRecursively(daWithToken.tokenRecord.delegate),
+    //         nftMint: nft.publicKey,
+    //         nftMetadata: nft.metadata.publicKey,
+    //         nftTokenRecord: getTokenRecordPda(nft.publicKey, user2.publicKey),
+    //         nftToken: getTokenAccount(nft.publicKey, user2.publicKey),
+    //         escrowNftEdition: null,
+    //         escrowNftMetadata: null,
+    //         tokenAccount: null,
+    //         destinationToken: null,
+    //         ownerTokenRecord: null,
+    //         destinationTokenRecord: null,
+    //         metadataProgram: MPL_TOKEN_METADATA_PROGRAM_ID,
+    //         sysvarInstructions: anchor.web3.SYSVAR_INSTRUCTIONS_PUBKEY,
+    //         authRules: null,
+    //         authRulesProgram: null,
+    //         authority: user.publicKey,
+    //         recipient: user2.publicKey,
+    //       })
+    //       .rpc()
+    //   })
+    // })
 
-    describe("Staked NFT", () => {
-      let nft: DigitalAsset
-      let crow: PublicKey
-      const asset = generateSigner(umi)
+    // describe("Staked NFT", () => {
+    //   let nft: DigitalAsset
+    //   let crow: PublicKey
+    //   const asset = generateSigner(umi)
 
-      before(async () => {
-        nft = await createNft(umi, false, undefined, user2.publicKey)
-        const delegate = generateSigner(umi)
-        await transactionBuilder()
-          .add(
-            createAccount(umi, {
-              newAccount: delegate,
-              lamports: sol(0.1),
-              space: 0,
-              programId: STAKE_PROGRAM,
-            })
-          )
-          .add(
-            delegateStandardV1(umi, {
-              mint: nft.publicKey,
-              delegate: delegate.publicKey,
-              tokenStandard: TokenStandard.NonFungible,
-              authority: user2,
-              token: getTokenAccount(nft.publicKey, user2.publicKey),
-              tokenOwner: user2.publicKey,
-            })
-          )
-          .add(
-            freezeDelegatedAccount(umi, {
-              mint: nft.publicKey,
-              delegate,
-              tokenAccount: getTokenAccount(nft.publicKey, user2.publicKey),
-            })
-          )
-          .sendAndConfirm(umi)
+    //   before(async () => {
+    //     nft = await createNft(umi, false, undefined, user2.publicKey)
+    //     const staker = generateSigner(umi).publicKey
+    //     const delegate = umi.eddsa.findPda(publicKey("STAKEQkGBjkhCXabzB5cUbWgSSvbVJFEm2oEnyWzdKE"), [
+    //       string({ size: "variable" }).serialize("STAKE"),
+    //       publicKeySerializer().serialize(staker),
+    //       string({ size: "variable" }).serialize("nft-authority"),
+    //     ])[0]
 
-        crow = findCrowPda(nft.publicKey)
-      })
+    //     await transactionBuilder()
+    //       .add(
+    //         delegateStandardV1(umi, {
+    //           mint: nft.publicKey,
+    //           delegate,
+    //           tokenStandard: TokenStandard.NonFungible,
+    //           authority: user2,
+    //           token: getTokenAccount(nft.publicKey, user2.publicKey),
+    //           tokenOwner: user2.publicKey,
+    //         })
+    //       )
+    //       .add(
+    //         freezeDelegatedAccount(umi, {
+    //           mint: nft.publicKey,
+    //           delegate,
+    //           tokenAccount: getTokenAccount(nft.publicKey, user2.publicKey),
+    //         })
+    //       )
+    //       .sendAndConfirm(umi)
 
-      it("can transfer in", async () => {
-        await userProgram.methods
-          .transferIn(
-            { sol: {} },
-            new BN(sol(1).basisPoints.toString()),
-            null,
-            null,
-            { none: {} },
-            new BN(sol(0.001).basisPoints.toString())
-          )
-          .accounts({
-            crow,
-            programConfig: findProgramConfigPda(),
-            feesWallet: FEES_WALLET,
-            feeWaiver: FEE_WAIVER.publicKey,
-            asset: asset.publicKey,
-            tokenMint: null,
-            nftMint: nft.publicKey,
-            nftMetadata: nft.metadata.publicKey,
-            escrowNftEdition: null,
-            escrowNftMetadata: null,
-            tokenAccount: null,
-            destinationToken: null,
-            ownerTokenRecord: null,
-            destinationTokenRecord: null,
-            metadataProgram: MPL_TOKEN_METADATA_PROGRAM_ID,
-            sysvarInstructions: anchor.web3.SYSVAR_INSTRUCTIONS_PUBKEY,
-            authRules: null,
-            authRulesProgram: null,
-          })
-          .signers([toWeb3JsKeypair(asset), toWeb3JsKeypair(FEE_WAIVER)])
-          .rpc()
-      })
+    //     crow = findCrowPda(nft.publicKey)
+    //   })
 
-      it("cannot transfer out without providing delegate", async () => {
-        await expectFail(
-          () =>
-            user2Program.methods
-              .transferOut(null)
-              .accounts({
-                crow,
-                programConfig: findProgramConfigPda(),
-                feesWallet: FEES_WALLET,
-                feeWaiver: null,
-                asset: asset.publicKey,
-                tokenMint: null,
-                delegate: null,
-                nftMint: nft.publicKey,
-                nftMetadata: nft.metadata.publicKey,
-                nftTokenRecord: null,
-                nftToken: getTokenAccount(nft.publicKey, user2.publicKey),
-                escrowNftEdition: null,
-                escrowNftMetadata: null,
-                tokenAccount: null,
-                destinationToken: null,
-                ownerTokenRecord: null,
-                destinationTokenRecord: null,
-                metadataProgram: MPL_TOKEN_METADATA_PROGRAM_ID,
-                sysvarInstructions: anchor.web3.SYSVAR_INSTRUCTIONS_PUBKEY,
-                authRules: null,
-                authRulesProgram: null,
-                authority: user.publicKey,
-                recipient: user2.publicKey,
-              })
-              .rpc(),
-          (err) => assertErrorCode(err, "TokenIsLocked")
-        )
-      })
+    //   it("can transfer in", async () => {
+    //     await userProgram.methods
+    //       .transferIn(
+    //         { sol: {} },
+    //         new BN(sol(1).basisPoints.toString()),
+    //         null,
+    //         null,
+    //         { none: {} },
+    //         new BN(sol(0.001).basisPoints.toString())
+    //       )
+    //       .accounts({
+    //         crow,
+    //         programConfig: findProgramConfigPda(),
+    //         feesWallet: FEES_WALLET,
+    //         feeWaiver: FEE_WAIVER.publicKey,
+    //         asset: asset.publicKey,
+    //         tokenMint: null,
+    //         nftMint: nft.publicKey,
+    //         nftMetadata: nft.metadata.publicKey,
+    //         escrowNftEdition: null,
+    //         escrowNftMetadata: null,
+    //         tokenAccount: null,
+    //         destinationToken: null,
+    //         ownerTokenRecord: null,
+    //         destinationTokenRecord: null,
+    //         metadataProgram: MPL_TOKEN_METADATA_PROGRAM_ID,
+    //         sysvarInstructions: anchor.web3.SYSVAR_INSTRUCTIONS_PUBKEY,
+    //         authRules: null,
+    //         authRulesProgram: null,
+    //       })
+    //       .signers([toWeb3JsKeypair(asset), toWeb3JsKeypair(FEE_WAIVER)])
+    //       .rpc()
+    //   })
 
-      it("can transfer out if delegate is expected owner", async () => {
-        const daWithToken = await fetchDigitalAssetWithToken(
-          umi,
-          nft.publicKey,
-          getTokenAccount(nft.publicKey, user2.publicKey)
-        )
-        await user2Program.methods
-          .transferOut(null)
-          .accounts({
-            crow,
-            programConfig: findProgramConfigPda(),
-            feesWallet: FEES_WALLET,
-            feeWaiver: null,
-            asset: asset.publicKey,
-            tokenMint: null,
-            delegate: unwrapOptionRecursively(daWithToken.token.delegate),
-            nftMint: nft.publicKey,
-            nftMetadata: nft.metadata.publicKey,
-            nftTokenRecord: null,
-            nftToken: getTokenAccount(nft.publicKey, user2.publicKey),
-            escrowNftEdition: null,
-            escrowNftMetadata: null,
-            tokenAccount: null,
-            destinationToken: null,
-            ownerTokenRecord: null,
-            destinationTokenRecord: null,
-            metadataProgram: MPL_TOKEN_METADATA_PROGRAM_ID,
-            sysvarInstructions: anchor.web3.SYSVAR_INSTRUCTIONS_PUBKEY,
-            authRules: null,
-            authRulesProgram: null,
-            authority: user.publicKey,
-            recipient: user2.publicKey,
-          })
-          .rpc()
-      })
-    })
+    //   it("cannot transfer out without providing delegate", async () => {
+    //     await expectFail(
+    //       () =>
+    //         user2Program.methods
+    //           .transferOut(null, null)
+    //           .accounts({
+    //             crow,
+    //             programConfig: findProgramConfigPda(),
+    //             feesWallet: FEES_WALLET,
+    //             feeWaiver: null,
+    //             asset: asset.publicKey,
+    //             tokenMint: null,
+    //             delegate: null,
+    //             staker: null,
+    //             nftMint: nft.publicKey,
+    //             nftMetadata: nft.metadata.publicKey,
+    //             nftTokenRecord: null,
+    //             nftToken: getTokenAccount(nft.publicKey, user2.publicKey),
+    //             escrowNftEdition: null,
+    //             escrowNftMetadata: null,
+    //             tokenAccount: null,
+    //             destinationToken: null,
+    //             ownerTokenRecord: null,
+    //             destinationTokenRecord: null,
+    //             metadataProgram: MPL_TOKEN_METADATA_PROGRAM_ID,
+    //             sysvarInstructions: anchor.web3.SYSVAR_INSTRUCTIONS_PUBKEY,
+    //             authRules: null,
+    //             authRulesProgram: null,
+    //             authority: user.publicKey,
+    //             recipient: user2.publicKey,
+    //           })
+    //           .rpc(),
+    //       (err) => assertErrorCode(err, "TokenIsLocked")
+    //     )
+    //   })
+
+    //   it("can transfer out if delegate is expected owner", async () => {
+    //     const daWithToken = await fetchDigitalAssetWithToken(
+    //       umi,
+    //       nft.publicKey,
+    //       getTokenAccount(nft.publicKey, user2.publicKey)
+    //     )
+    //     await user2Program.methods
+    //       .transferOut(null, null)
+    //       .accounts({
+    //         crow,
+    //         programConfig: findProgramConfigPda(),
+    //         feesWallet: FEES_WALLET,
+    //         feeWaiver: null,
+    //         asset: asset.publicKey,
+    //         tokenMint: null,
+    //         delegate: unwrapOptionRecursively(daWithToken.token.delegate),
+    //         staker: null,
+    //         nftMint: nft.publicKey,
+    //         nftMetadata: nft.metadata.publicKey,
+    //         nftTokenRecord: null,
+    //         nftToken: getTokenAccount(nft.publicKey, user2.publicKey),
+    //         escrowNftEdition: null,
+    //         escrowNftMetadata: null,
+    //         tokenAccount: null,
+    //         destinationToken: null,
+    //         ownerTokenRecord: null,
+    //         destinationTokenRecord: null,
+    //         metadataProgram: MPL_TOKEN_METADATA_PROGRAM_ID,
+    //         sysvarInstructions: anchor.web3.SYSVAR_INSTRUCTIONS_PUBKEY,
+    //         authRules: null,
+    //         authRulesProgram: null,
+    //         authority: user.publicKey,
+    //         recipient: user2.publicKey,
+    //       })
+    //       .rpc()
+    //   })
+    // })
 
     describe("Custom fee waiver", () => {
       let nft: DigitalAsset
@@ -1902,7 +1935,7 @@ describe("esCROW", () => {
         await expectFail(
           () =>
             user2Program.methods
-              .transferOut(new BN(sol(0.0001).basisPoints.toString()))
+              .transferOut(null, new BN(sol(0.0001).basisPoints.toString()))
               .accounts({
                 crow,
                 programConfig: findProgramConfigPda(),
@@ -1911,6 +1944,7 @@ describe("esCROW", () => {
                 asset: asset.publicKey,
                 tokenMint: null,
                 delegate: null,
+                staker: null,
                 nftMint: nft.publicKey,
                 nftMetadata: nft.metadata.publicKey,
                 nftTokenRecord: getTokenRecordPda(nft.publicKey, user2.publicKey),
@@ -1936,7 +1970,7 @@ describe("esCROW", () => {
       it("Can claim with a bespoke fee", async () => {
         const balBefore = await umi.rpc.getBalance(user2.publicKey)
         await user2Program.methods
-          .transferOut(new BN(sol(0.0001).basisPoints.toString()))
+          .transferOut(null, new BN(sol(0.0001).basisPoints.toString()))
           .accounts({
             crow,
             programConfig: findProgramConfigPda(),
@@ -1945,6 +1979,7 @@ describe("esCROW", () => {
             asset: asset.publicKey,
             tokenMint: null,
             delegate: null,
+            staker: null,
             nftMint: nft.publicKey,
             nftMetadata: nft.metadata.publicKey,
             nftTokenRecord: getTokenRecordPda(nft.publicKey, user2.publicKey),
@@ -1971,6 +2006,337 @@ describe("esCROW", () => {
           sol(1).basisPoints - TX_FEE * 2n - sol(0.0001).basisPoints
         )
       })
+    })
+  })
+
+  describe("Nifty", () => {
+    const niftyAsset = generateSigner(umi)
+    const asset = generateSigner(umi)
+    const crow = findCrowPda(niftyAsset.publicKey)
+    it("can create a nifty crow", async () => {
+      await create(umi, {
+        asset: niftyAsset,
+        name: "nifty",
+        owner: user2.publicKey,
+        authority: umi.identity,
+        payer: umi.identity,
+      }).sendAndConfirm(umi)
+
+      await userProgram.methods
+        .transferIn({ sol: {} }, new BN(sol(1).basisPoints.toString()), null, null, { none: {} }, null)
+        .accounts({
+          crow,
+          programConfig: findProgramConfigPda(),
+          feesWallet: FEES_WALLET,
+          feeWaiver: null,
+          asset: asset.publicKey,
+          tokenMint: null,
+          nftMint: niftyAsset.publicKey,
+          nftMetadata: null,
+          escrowNftEdition: null,
+          escrowNftMetadata: null,
+          tokenAccount: null,
+          destinationToken: null,
+          ownerTokenRecord: null,
+          destinationTokenRecord: null,
+          metadataProgram: MPL_TOKEN_METADATA_PROGRAM_ID,
+          sysvarInstructions: anchor.web3.SYSVAR_INSTRUCTIONS_PUBKEY,
+          authRules: null,
+          authRulesProgram: null,
+        })
+        .signers([toWeb3JsKeypair(asset)])
+        .rpc()
+    })
+
+    it("cannot claim as non-owner", async () => {
+      await expectFail(
+        () =>
+          userProgram.methods
+            .transferOut(null, null)
+            .accounts({
+              crow,
+              programConfig: findProgramConfigPda(),
+              feesWallet: FEES_WALLET,
+              feeWaiver: null,
+              asset: asset.publicKey,
+              tokenMint: null,
+              delegate: null,
+              staker: null,
+              nftMint: niftyAsset.publicKey,
+              nftMetadata: null,
+              nftTokenRecord: null,
+              nftToken: null,
+              escrowNftEdition: null,
+              escrowNftMetadata: null,
+              tokenAccount: null,
+              destinationToken: null,
+              ownerTokenRecord: null,
+              destinationTokenRecord: null,
+              metadataProgram: MPL_TOKEN_METADATA_PROGRAM_ID,
+              sysvarInstructions: anchor.web3.SYSVAR_INSTRUCTIONS_PUBKEY,
+              authRules: null,
+              authRulesProgram: null,
+              authority: user.publicKey,
+              recipient: user.publicKey,
+            })
+            .rpc(),
+        (err) => assertErrorCode(err, "Unauthorized")
+      )
+    })
+
+    it("cannot claim if asset is locked", async () => {
+      await approve(umi, {
+        asset: niftyAsset.publicKey,
+        owner: user2,
+        delegate: umi.identity.publicKey,
+        delegateInput: delegateInput("Some", { roles: [DelegateRole.Lock] }),
+      })
+        .add(
+          lock(umi, {
+            asset: niftyAsset.publicKey,
+          })
+        )
+        .sendAndConfirm(umi)
+
+      await expectFail(
+        () =>
+          user2Program.methods
+            .transferOut(null, null)
+            .accounts({
+              crow,
+              owner: user2.publicKey,
+              programConfig: findProgramConfigPda(),
+              feesWallet: FEES_WALLET,
+              feeWaiver: null,
+              asset: asset.publicKey,
+              tokenMint: null,
+              delegate: null,
+              staker: null,
+              nftMint: niftyAsset.publicKey,
+              nftMetadata: null,
+              nftTokenRecord: null,
+              nftToken: null,
+              escrowNftEdition: null,
+              escrowNftMetadata: null,
+              tokenAccount: null,
+              destinationToken: null,
+              ownerTokenRecord: null,
+              destinationTokenRecord: null,
+              metadataProgram: MPL_TOKEN_METADATA_PROGRAM_ID,
+              sysvarInstructions: anchor.web3.SYSVAR_INSTRUCTIONS_PUBKEY,
+              authRules: null,
+              authRulesProgram: null,
+              authority: user.publicKey,
+              recipient: user2.publicKey,
+            })
+            .rpc(),
+        (err) => assertErrorCode(err, "TokenIsLocked")
+      )
+    })
+
+    it("can claim if asset is unlocked", async () => {
+      await unlock(umi, {
+        asset: niftyAsset.publicKey,
+      })
+        .add(
+          revoke(umi, {
+            asset: niftyAsset.publicKey,
+            delegateInput: delegateInput("Some", {
+              roles: [DelegateRole.Lock],
+            }),
+            signer: user2,
+          })
+        )
+        .sendAndConfirm(umi)
+
+      await user2Program.methods
+        .transferOut(null, null)
+        .accounts({
+          crow,
+          owner: user2.publicKey,
+          programConfig: findProgramConfigPda(),
+          feesWallet: FEES_WALLET,
+          feeWaiver: null,
+          asset: asset.publicKey,
+          tokenMint: null,
+          delegate: null,
+          staker: null,
+          nftMint: niftyAsset.publicKey,
+          nftMetadata: null,
+          nftTokenRecord: null,
+          nftToken: null,
+          escrowNftEdition: null,
+          escrowNftMetadata: null,
+          tokenAccount: null,
+          destinationToken: null,
+          ownerTokenRecord: null,
+          destinationTokenRecord: null,
+          metadataProgram: MPL_TOKEN_METADATA_PROGRAM_ID,
+          sysvarInstructions: anchor.web3.SYSVAR_INSTRUCTIONS_PUBKEY,
+          authRules: null,
+          authRulesProgram: null,
+          authority: user.publicKey,
+          recipient: user2.publicKey,
+        })
+        .rpc()
+    })
+  })
+
+  describe("Core", () => {
+    const coreAsset = generateSigner(umi)
+    const asset = generateSigner(umi)
+    const crow = findCrowPda(coreAsset.publicKey)
+    it("can create a core crow", async () => {
+      await createV1(umi, {
+        asset: coreAsset,
+        name: "core",
+        uri: "",
+        owner: user2.publicKey,
+      }).sendAndConfirm(umi)
+
+      await userProgram.methods
+        .transferIn({ sol: {} }, new BN(sol(1).basisPoints.toString()), null, null, { none: {} }, null)
+        .accounts({
+          crow,
+          programConfig: findProgramConfigPda(),
+          feesWallet: FEES_WALLET,
+          feeWaiver: null,
+          asset: asset.publicKey,
+          tokenMint: null,
+          nftMint: coreAsset.publicKey,
+          nftMetadata: null,
+          escrowNftEdition: null,
+          escrowNftMetadata: null,
+          tokenAccount: null,
+          destinationToken: null,
+          ownerTokenRecord: null,
+          destinationTokenRecord: null,
+          metadataProgram: MPL_TOKEN_METADATA_PROGRAM_ID,
+          sysvarInstructions: anchor.web3.SYSVAR_INSTRUCTIONS_PUBKEY,
+          authRules: null,
+          authRulesProgram: null,
+        })
+        .signers([toWeb3JsKeypair(asset)])
+        .rpc()
+    })
+
+    it("cannot claim as non-owner", async () => {
+      await expectFail(
+        () =>
+          userProgram.methods
+            .transferOut(null, null)
+            .accounts({
+              crow,
+              programConfig: findProgramConfigPda(),
+              feesWallet: FEES_WALLET,
+              feeWaiver: null,
+              asset: asset.publicKey,
+              tokenMint: null,
+              delegate: null,
+              staker: null,
+              nftMint: coreAsset.publicKey,
+              nftMetadata: null,
+              nftTokenRecord: null,
+              nftToken: null,
+              escrowNftEdition: null,
+              escrowNftMetadata: null,
+              tokenAccount: null,
+              destinationToken: null,
+              ownerTokenRecord: null,
+              destinationTokenRecord: null,
+              metadataProgram: MPL_TOKEN_METADATA_PROGRAM_ID,
+              sysvarInstructions: anchor.web3.SYSVAR_INSTRUCTIONS_PUBKEY,
+              authRules: null,
+              authRulesProgram: null,
+              authority: user.publicKey,
+              recipient: user.publicKey,
+            })
+            .rpc(),
+        (err) => assertErrorCode(err, "Unauthorized")
+      )
+    })
+
+    it("cannot claim if asset is locked", async () => {
+      await addPluginV1(umi, {
+        asset: coreAsset.publicKey,
+        plugin: createPlugin({ type: "FreezeDelegate", data: { frozen: true } }),
+        initAuthority: pluginAuthority("Address", { address: umi.identity.publicKey }),
+        authority: user2,
+      }).sendAndConfirm(umi)
+
+      await expectFail(
+        () =>
+          user2Program.methods
+            .transferOut(null, null)
+            .accounts({
+              crow,
+              owner: user2.publicKey,
+              programConfig: findProgramConfigPda(),
+              feesWallet: FEES_WALLET,
+              feeWaiver: null,
+              asset: asset.publicKey,
+              tokenMint: null,
+              delegate: null,
+              staker: null,
+              nftMint: coreAsset.publicKey,
+              nftMetadata: null,
+              nftTokenRecord: null,
+              nftToken: null,
+              escrowNftEdition: null,
+              escrowNftMetadata: null,
+              tokenAccount: null,
+              destinationToken: null,
+              ownerTokenRecord: null,
+              destinationTokenRecord: null,
+              metadataProgram: MPL_TOKEN_METADATA_PROGRAM_ID,
+              sysvarInstructions: anchor.web3.SYSVAR_INSTRUCTIONS_PUBKEY,
+              authRules: null,
+              authRulesProgram: null,
+              authority: user.publicKey,
+              recipient: user2.publicKey,
+            })
+            .rpc(),
+        (err) => assertErrorCode(err, "TokenIsLocked")
+      )
+    })
+
+    it("can claim if asset is unlocked", async () => {
+      const coreAssetAcc = await fetchAssetV1(umi, coreAsset.publicKey)
+      await thawAsset(umi, {
+        asset: coreAssetAcc,
+        delegate: umi.identity,
+      }).sendAndConfirm(umi)
+
+      await user2Program.methods
+        .transferOut(null, null)
+        .accounts({
+          crow,
+          owner: user2.publicKey,
+          programConfig: findProgramConfigPda(),
+          feesWallet: FEES_WALLET,
+          feeWaiver: null,
+          asset: asset.publicKey,
+          tokenMint: null,
+          delegate: null,
+          staker: null,
+          nftMint: coreAsset.publicKey,
+          nftMetadata: null,
+          nftTokenRecord: null,
+          nftToken: null,
+          escrowNftEdition: null,
+          escrowNftMetadata: null,
+          tokenAccount: null,
+          destinationToken: null,
+          ownerTokenRecord: null,
+          destinationTokenRecord: null,
+          metadataProgram: MPL_TOKEN_METADATA_PROGRAM_ID,
+          sysvarInstructions: anchor.web3.SYSVAR_INSTRUCTIONS_PUBKEY,
+          authRules: null,
+          authRulesProgram: null,
+          authority: user.publicKey,
+          recipient: user2.publicKey,
+        })
+        .rpc()
     })
   })
 })

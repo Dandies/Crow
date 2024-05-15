@@ -15,8 +15,10 @@ pub mod constants {
     pub const FEES_WALLET: Pubkey = pubkey!("B84GxkZDmXmbZ9PBK7yLvYpNhMX1TAUQ4T7tQWsukUyT");
     pub const FEE_WAIVER: Pubkey = pubkey!("9WUge3Kcva9dHBjCKc7KkdffYwshHJTAmeV1UHnhnhG3");
     pub const STAKE_PROGRAM: Pubkey = pubkey!("STAKEQkGBjkhCXabzB5cUbWgSSvbVJFEm2oEnyWzdKE");
-    pub const FEES_WAIVED_COLLECTION: Pubkey =
-        pubkey!("TTPN34UsRSBxkEyuC5Zk48b4c5Wxy3wuVxFoPhTMu8a");
+    pub const CORE_PROGRAM: Pubkey = pubkey!("CoREENxT6tW1HoK8ypY1SxRMZTcVPm7R94rH4PZNhX7d");
+    pub const NIFTY_PROGRAM: Pubkey = pubkey!("AssetGtQBTSgm5s91d1RAQod5JmaZiJDxqsgtqrZud73");
+    pub const DANDIES_PNFT: Pubkey = pubkey!("TTPN34UsRSBxkEyuC5Zk48b4c5Wxy3wuVxFoPhTMu8a");
+    pub const DANDIES_NIFTY: Pubkey = pubkey!("BBrZYucnUXEbizXh2XqtHzqZ6ZHCfvmxKb7H5uJ6pWAF");
 }
 
 #[cfg(not(feature = "local-testing"))]
@@ -25,8 +27,10 @@ pub mod constants {
     pub const FEES_WALLET: Pubkey = pubkey!("B84GxkZDmXmbZ9PBK7yLvYpNhMX1TAUQ4T7tQWsukUyT");
     pub const FEE_WAIVER: Pubkey = pubkey!("5d9sgp6xa6bif52EY1UrrPBUhfhYVdqzxvdSpdRexydQ");
     pub const STAKE_PROGRAM: Pubkey = pubkey!("STAKEQkGBjkhCXabzB5cUbWgSSvbVJFEm2oEnyWzdKE");
-    pub const FEES_WAIVED_COLLECTION: Pubkey =
-        pubkey!("CdxKBSnipG5YD5KBuH3L1szmhPW1mwDHe6kQFR3nk9ys");
+    pub const CORE_PROGRAM: Pubkey = pubkey!("CoREENxT6tW1HoK8ypY1SxRMZTcVPm7R94rH4PZNhX7d");
+    pub const NIFTY_PROGRAM: Pubkey = pubkey!("AssetGtQBTSgm5s91d1RAQod5JmaZiJDxqsgtqrZud73");
+    pub const DANDIES_PNFT: Pubkey = pubkey!("CdxKBSnipG5YD5KBuH3L1szmhPW1mwDHe6kQFR3nk9ys");
+    pub const DANDIES_NIFTY: Pubkey = pubkey!("BBrZYucnUXEbizXh2XqtHzqZ6ZHCfvmxKb7H5uJ6pWAF");
 }
 
 #[program]
@@ -34,8 +38,8 @@ pub mod crow {
 
     use super::*;
 
-    pub fn transfer_in(
-        ctx: Context<TransferIn>,
+    pub fn transfer_in<'info>(
+        ctx: Context<'_, '_, '_, 'info, TransferIn<'info>>,
         asset_type: AssetType,
         amount: Option<u64>,
         start_time: Option<i64>,
@@ -115,6 +119,12 @@ pub enum CrowError {
     NftCeption,
     #[msg("Fee waiver required as signer if providing a custom fee")]
     FeeWaiverNotProvided,
+    #[msg("Token metadata account is required for this asset type")]
+    MissingMetadata,
+    #[msg("Asset type not supported")]
+    InvalidAssetType,
+    #[msg("This asset type doesn't expect a metadata account")]
+    InvalidMetadata,
 }
 
 /// Emitted when tokens are claimed.

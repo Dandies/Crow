@@ -28,7 +28,7 @@ import { ChangeEvent, useEffect, useState } from "react"
 import { useWallet } from "@solana/wallet-adapter-react"
 import { Center } from "./components/Center"
 import Link from "next/link"
-import { DigitalAssetWithCrow, useDigitalAssets } from "./context/digital-assets"
+import { UniversalAssetWithCrow, useDigitalAssets } from "./context/digital-assets"
 import CrowLogo from "@/../public/white-crow.png"
 import Image from "next/image"
 import { publicKey, unwrapOptionRecursively } from "@metaplex-foundation/umi"
@@ -38,11 +38,14 @@ import { WalletButton } from "./components/WalletButton"
 import { useRouter, useSearchParams } from "next/navigation"
 import { Close, Search, TripOrigin } from "@mui/icons-material"
 import { getDigitalAsset } from "./helpers/helius"
-import { TokenStandard, fetchDigitalAsset } from "@metaplex-foundation/mpl-token-metadata"
+import { TokenStandard, fetchDigitalAsset, fetchJsonMetadata } from "@metaplex-foundation/mpl-token-metadata"
 import { useUmi } from "./context/umi"
 import { findCrowPda } from "./helpers/pdas"
 import { CopyAddress } from "./components/CopyAddress"
 import toast from "react-hot-toast"
+import { SPL_TOKEN_PROGRAM_ID } from "@metaplex-foundation/mpl-toolbox"
+import { ASSET_PROGRAM_ID } from "@nifty-oss/asset"
+import { MPL_CORE_PROGRAM_ID } from "@metaplex-foundation/mpl-core"
 
 export default function Home() {
   const router = useRouter()
@@ -81,22 +84,32 @@ export default function Home() {
       } else {
         try {
           const pk = publicKey(searchTerm)
-          const da = await fetchDigitalAsset(umi, pk)
-          if (!da) {
-            throw new Error("NFT not found")
-          }
+          const account = await umi.rpc.getAccount(pk)
 
-          if (
-            ![
-              TokenStandard.NonFungible,
-              TokenStandard.NonFungibleEdition,
-              TokenStandard.ProgrammableNonFungible,
-              TokenStandard.ProgrammableNonFungibleEdition,
-            ].includes(unwrapOptionRecursively(da.metadata.tokenStandard) || 0)
-          ) {
-            throw new Error("Only non fungibles can be used as Crows")
+          if (account.exists && account.owner === SPL_TOKEN_PROGRAM_ID) {
+            const da = await fetchDigitalAsset(umi, pk)
+            if (!da) {
+              throw new Error("NFT not found")
+            }
+
+            if (
+              ![
+                TokenStandard.NonFungible,
+                TokenStandard.NonFungibleEdition,
+                TokenStandard.ProgrammableNonFungible,
+                TokenStandard.ProgrammableNonFungibleEdition,
+              ].includes(unwrapOptionRecursively(da.metadata.tokenStandard) || 0)
+            ) {
+              throw new Error("Only non fungibles can be used as Crows")
+            }
+            router.push(`/crow/${pk}`)
+          } else if (account.exists && account.owner === ASSET_PROGRAM_ID) {
+            router.push(`/crow/${pk}`)
+          } else if (account.exists && account.owner === MPL_CORE_PROGRAM_ID) {
+            router.push(`/crow/${pk}`)
+          } else {
+            throw new Error("Invalid asset")
           }
-          router.push(`/crow/${da.publicKey}`)
         } catch (err: any) {
           throw new Error("Invalid mint")
         }
@@ -112,7 +125,7 @@ export default function Home() {
 
   const filtered = orderBy(
     filter === "assets" ? crows.filter((c) => c.crow?.assets?.length) : crows,
-    (item) => (sortType === "assets" ? item.crow?.assets?.length || 0 : item.content?.metadata.name),
+    (item) => (sortType === "assets" ? item.crow?.assets?.length || 0 : item.name),
     order as Many<boolean | "desc" | "asc">
   )
 
@@ -267,9 +280,22 @@ export default function Home() {
   )
 }
 
-function Crow({ crow }: { crow: DigitalAssetWithCrow }) {
+function Crow({ crow }: { crow: UniversalAssetWithCrow }) {
   const program = useAnchor()
+  const [image, setImage] = useState(crow.image)
+  const umi = useUmi()
   const { fetchAccounts } = useDigitalAssets()
+
+  useEffect(() => {
+    if (image || !crow.uri) {
+      return
+    }
+
+    ;(async () => {
+      const json = await fetchJsonMetadata(umi, crow.uri!)
+      setImage(json.image)
+    })()
+  }, [crow])
 
   useEffect(() => {
     if (!crow.crow?.publicKey) {
@@ -299,11 +325,7 @@ function Crow({ crow }: { crow: DigitalAssetWithCrow }) {
           }}
         >
           <img
-            src={
-              crow.content?.links?.image
-                ? `https://img-cdn.magiceden.dev/rs:fill:400:400:0:0/plain/${crow.content.links.image}`
-                : "/fallback-image.jpg"
-            }
+            src={image ? `https://img-cdn.magiceden.dev/rs:fill:400:400:0:0/plain/${image}` : "/fallback-image.jpg"}
             width="100%"
           />
         </Box>
@@ -318,7 +340,7 @@ function Crow({ crow }: { crow: DigitalAssetWithCrow }) {
                 fontWeight: "bold",
               }}
             >
-              {crow.content?.metadata.name}
+              {crow.name}
             </Typography>
             <Stack spacing={1} direction="row" alignItems="center">
               <Image src={CrowLogo} alt="Crow" width={15} />

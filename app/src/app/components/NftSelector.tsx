@@ -16,16 +16,18 @@ import {
 } from "@mui/material"
 import { groupBy, orderBy } from "lodash"
 import { useState, useEffect, useRef } from "react"
-import { useDigitalAssets, DigitalAssetWithCrow } from "../context/digital-assets"
+import { AssetType, UniversalAssetWithCrow, useDigitalAssets } from "../context/digital-assets"
 import { Center } from "./Center"
 import useOnScreen from "../hooks/use-on-screen"
+import { fetchJsonMetadata } from "@metaplex-foundation/mpl-token-metadata"
+import { useUmi } from "../context/umi"
 
 type Collection = { id: string; name: string }
 
 export function NftSelector({ onSelect, close, omit }: { onSelect: Function; close: Function; omit?: string }) {
   const { digitalAssetsWithCrows: digitalAssets, fetching } = useDigitalAssets()
   const [filter, setFilter] = useState("")
-  const [filtered, setFiltered] = useState<DigitalAssetWithCrow[]>([])
+  const [filtered, setFiltered] = useState<UniversalAssetWithCrow[]>([])
   const [collections, setCollections] = useState<Array<Collection>>([])
   const [collection, setCollection] = useState<Collection | null>({ id: "crows" } as any)
 
@@ -34,16 +36,12 @@ export function NftSelector({ onSelect, close, omit }: { onSelect: Function; clo
       setCollections([])
       return
     }
-    const collectionIds = Object.keys(
-      groupBy(digitalAssets, (da) => da.grouping?.find((g) => g.group_key === "collection")?.group_value)
-    )
+    const collectionIds = Object.keys(groupBy(digitalAssets, (da) => da.collection))
     const collections = collectionIds.map((id) => {
-      const grouping = digitalAssets
-        .find((da) => da.grouping?.find((g) => g.group_value === id))
-        ?.grouping?.find((g) => g.group_key === "collection")
+      const grouping = digitalAssets.find((da) => da.collection === id)
       return {
         id,
-        name: grouping?.collection_metadata?.name || "Unknown collection",
+        name: grouping?.collectionName || "Unknown collection",
       }
     })
     setCollections(orderBy(collections, (c) => c.name))
@@ -52,22 +50,15 @@ export function NftSelector({ onSelect, close, omit }: { onSelect: Function; clo
   useEffect(() => {
     setFiltered([])
     setFiltered(
-      orderBy(digitalAssets, (da) => da.content?.metadata.name)
+      orderBy(digitalAssets, (da) => da.name)
         .filter((d) => d.id !== omit)
-        .filter(
-          (d) =>
-            !collection ||
-            (collection.id === "crows" ? !!d.crow : d.grouping?.find((g) => g.group_value === collection?.id))
-        )
+        .filter((d) => !collection || (collection.id === "crows" ? !!d.crow : d.collection === collection.id))
         .filter((da) => {
           if (!filter) {
             return true
           }
           const term = filter.toLowerCase()
-          return (
-            da.content?.metadata.name.toLowerCase().includes(term) ||
-            da.content?.metadata.attributes?.find((a) => a.value?.toLowerCase?.()?.includes(term))
-          )
+          return da.name?.toLowerCase().includes(term)
         })
     )
   }, [filter, digitalAssets, collection])
@@ -131,12 +122,25 @@ export function NftSelector({ onSelect, close, omit }: { onSelect: Function; clo
   )
 }
 
-function Nft({ nft, select }: { nft: DigitalAssetWithCrow; select: Function }) {
+function Nft({ nft, select }: { nft: UniversalAssetWithCrow; select: Function }) {
   const ref = useRef(null)
   const visible = useOnScreen(ref)
+  const umi = useUmi()
+  const [image, setImage] = useState(nft.image)
   function handleClick() {
     select(nft)
   }
+
+  useEffect(() => {
+    if (nft.image || !visible || !nft.uri) {
+      return
+    }
+
+    ;(async () => {
+      const json = await fetchJsonMetadata(umi, nft.uri!)
+      setImage(json.image)
+    })()
+  }, [visible, nft])
 
   return (
     <Card onClick={handleClick} ref={ref}>
@@ -159,11 +163,7 @@ function Nft({ nft, select }: { nft: DigitalAssetWithCrow; select: Function }) {
         )}
         {visible ? (
           <img
-            src={
-              nft.content?.links?.image
-                ? `https://img-cdn.magiceden.dev/rs:fill:200:200:0:0/plain/${nft.content.links.image}`
-                : "/fallback-image.jpg"
-            }
+            src={image ? `https://img-cdn.magiceden.dev/rs:fill:200:200:0:0/plain/${image}` : "/fallback-image.jpg"}
             width="100%"
           />
         ) : (
@@ -181,7 +181,7 @@ function Nft({ nft, select }: { nft: DigitalAssetWithCrow; select: Function }) {
             fontWeight: "bold",
           }}
         >
-          {nft.content?.metadata.name}
+          {nft.name}
         </Typography>
       </CardContent>
     </Card>
