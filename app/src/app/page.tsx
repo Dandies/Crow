@@ -22,13 +22,14 @@ import {
   ToggleButtonGroup,
   ToggleButton,
   FormLabel,
+  Tooltip,
 } from "@mui/material"
 import { useAnchor } from "./context/anchor"
 import { ChangeEvent, useEffect, useState } from "react"
 import { useWallet } from "@solana/wallet-adapter-react"
 import { Center } from "./components/Center"
 import Link from "next/link"
-import { UniversalAssetWithCrow, useDigitalAssets } from "./context/digital-assets"
+import { AssetType, UniversalAssetWithCrow, useDigitalAssets } from "./context/digital-assets"
 import CrowLogo from "@/../public/white-crow.png"
 import Image from "next/image"
 import { publicKey, unwrapOptionRecursively } from "@metaplex-foundation/umi"
@@ -322,8 +323,18 @@ function Crow({ crow }: { crow: UniversalAssetWithCrow }) {
             alignItems: "center",
             aspectRatio: "1 / 1",
             cursor: "pointer",
+            position: "relative",
           }}
         >
+          {[AssetType.CORE, AssetType.NIFTY].includes(crow.assetType) && (
+            <Tooltip title={crow.assetType === AssetType.NIFTY ? "Nifty-OSS asset" : "Metaplex Core asset"}>
+              <img
+                src={`${crow.assetType === AssetType.NIFTY ? "/nifty-dark.png" : "/metaplex.png"}`}
+                width="20%"
+                style={{ position: "absolute", top: "5%", right: "5%" }}
+              />
+            </Tooltip>
+          )}
           <img
             src={image ? `https://img-cdn.magiceden.dev/rs:fill:400:400:0:0/plain/${image}` : "/fallback-image.jpg"}
             width="100%"

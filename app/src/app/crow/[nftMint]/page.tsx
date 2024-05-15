@@ -1,7 +1,7 @@
 "use client"
 import * as anchor from "@coral-xyz/anchor"
 import { Center } from "@/app/components/Center"
-import { Card, CardContent, Stack, Typography, Box, Grid, Button, Container } from "@mui/material"
+import { Card, CardContent, Stack, Typography, Box, Grid, Button, Container, CircularProgress } from "@mui/material"
 import Link from "next/link"
 import { anonymousProgram } from "@/app/helpers/anchor"
 import { notFound } from "next/navigation"
@@ -92,7 +92,11 @@ export default function Crow({ params: { nftMint } }: { params: Record<string, s
   }, [nftMint])
 
   if (!daWithCrow) {
-    return null
+    return loading ? (
+      <Center>
+        <CircularProgress />
+      </Center>
+    ) : null
   }
 
   return (
