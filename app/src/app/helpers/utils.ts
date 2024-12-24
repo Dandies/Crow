@@ -195,7 +195,7 @@ export async function sendAllTxsWithRetries(
 export function mapToUniversalAsset(asset: DAS.GetAssetResponse | Asset | AssetV1) {
   if ("id" in asset) {
     const grouping = asset.grouping?.find((g) => g.group_key === "collection")
-    const collection = grouping?.group_value || asset.creators?.find((d) => d.verified)?.address
+    const collection = grouping?.group_value
     let collectionName = grouping?.collection_metadata?.name
     if (!collectionName) {
       collectionName = asset.content?.metadata.name.replace(/(\#).*/, "")
@@ -222,16 +222,6 @@ export function mapToUniversalAsset(asset: DAS.GetAssetResponse | Asset | AssetV
       collection: asset.group!,
       assetType: AssetType.NIFTY,
       locked: asset.state === State.Locked,
-      owner: asset.owner,
-    }
-  } else {
-    return {
-      id: asset.publicKey,
-      uri: asset.uri,
-      name: asset.name,
-      collection: asset.updateAuthority.address!,
-      assetType: AssetType.CORE,
-      locked: asset.freezeDelegate?.frozen || asset.permanentFreezeDelegate?.frozen,
       owner: asset.owner,
     }
   }

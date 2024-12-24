@@ -8,7 +8,13 @@ import { useAnchor } from "./anchor"
 import { mapDasWithAccounts, mapToUniversalAsset } from "../helpers/utils"
 import { useSearchParams } from "next/navigation"
 import axios from "axios"
-import { AssetV1, Key, fetchAllCollectionV1, getAssetV1GpaBuilder } from "@metaplex-foundation/mpl-core"
+import {
+  AssetV1,
+  Key,
+  fetchAllCollectionV1,
+  getAssetV1GpaBuilder,
+  safeFetchAllCollectionV1,
+} from "@metaplex-foundation/mpl-core"
 import { Asset, ExtensionType, State, fetchAllAsset, getAssetGpaBuilder, getExtension } from "@nifty-oss/asset"
 import { PublicKey, publicKey } from "@metaplex-foundation/umi"
 import { useUmi } from "./umi"
@@ -82,17 +88,16 @@ export function DigitalAssetsProvider({ children }: PropsWithChildren) {
   }
 
   async function getAssets(wallet: string): Promise<UniversalAsset[]> {
-    const [{ data: das }, core, nifty]: [{ data: DAS.GetAssetResponse[] }, AssetV1[], Asset[]] = await Promise.all([
+    const [{ data: das }, nifty]: [{ data: DAS.GetAssetResponse[] }, Asset[]] = await Promise.all([
       axios.post("/api/get-nfts", {
         ownerAddress: wallet,
       }),
-      getCore(wallet),
       getNifty(wallet),
     ])
 
-    const assets = [...das.filter((da) => !da.compression?.compressed), ...core, ...nifty].map(mapToUniversalAsset)
+    const assets = [...das.filter((da) => !da.compression?.compressed), ...nifty].map(mapToUniversalAsset)
 
-    const [niftyCollections, coreCollections] = await Promise.all([
+    const [niftyCollections] = await Promise.all([
       fetchAllAsset(
         umi,
         uniq(
@@ -101,13 +106,6 @@ export function DigitalAssetsProvider({ children }: PropsWithChildren) {
             .map((n) => n.collection)
             .filter(Boolean) as PublicKey[]
         )
-      ),
-      fetchAllCollectionV1(
-        umi,
-        assets
-          .filter((a) => a.assetType === AssetType.CORE)
-          .map((n) => n.collection)
-          .filter(Boolean) as PublicKey[]
       ),
     ])
 
@@ -120,25 +118,25 @@ export function DigitalAssetsProvider({ children }: PropsWithChildren) {
         }
       }
 
-      if (a.assetType === AssetType.CORE) {
-        const coll = coreCollections.find((c) => c.publicKey === a.collection)
-        return {
-          ...a,
-          collectionName: `${coll?.name} * CORE`,
-        }
-      }
+      // if (a.assetType === AssetType.CORE) {
+      //   const coll = coreCollections.find((c) => c.publicKey === a.collection)
+      //   return {
+      //     ...a,
+      //     collectionName: `${coll?.name} * CORE`,
+      //   }
+      // }
 
       return a
     })
   }
 
-  async function getCore(wallet: string) {
-    const assets = await getAssetV1GpaBuilder(umi)
-      .whereField("owner", publicKey(wallet))
-      .whereField("key", Key.AssetV1)
-      .getDeserialized()
-    return assets
-  }
+  // async function getCore(wallet: string) {
+  //   const assets = await getAssetV1GpaBuilder(umi)
+  //     .whereField("owner", publicKey(wallet))
+  //     .whereField("key", Key.AssetV1)
+  //     .getDeserialized()
+  //   return assets
+  // }
 
   async function getNifty(wallet: string) {
     const assets = await getAssetGpaBuilder(umi).whereField("owner", publicKey(wallet)).getDeserialized()
