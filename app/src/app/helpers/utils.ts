@@ -192,7 +192,7 @@ export async function sendAllTxsWithRetries(
   }
 }
 
-export function mapToUniversalAsset(asset: DAS.GetAssetResponse | Asset) {
+export function mapToUniversalAsset(asset: DAS.GetAssetResponse | Asset | AssetV1) {
   if ("id" in asset) {
     const grouping = asset.grouping?.find((g) => g.group_key === "collection")
     const collection = grouping?.group_value
@@ -211,7 +211,7 @@ export function mapToUniversalAsset(asset: DAS.GetAssetResponse | Asset) {
       locked: !!asset.ownership.delegated && asset.ownership.frozen,
       owner: publicKey(asset.ownership.owner),
     }
-  } else {
+  } else if ("extensions" in asset) {
     const blob = getExtension(asset, ExtensionType.Blob)
     return {
       id: asset.publicKey,
@@ -222,6 +222,16 @@ export function mapToUniversalAsset(asset: DAS.GetAssetResponse | Asset) {
       collection: asset.group!,
       assetType: AssetType.NIFTY,
       locked: asset.state === State.Locked,
+      owner: asset.owner,
+    }
+  } else {
+    return {
+      id: asset.publicKey,
+      uri: asset.uri,
+      name: asset.name,
+      collection: asset.updateAuthority.address!,
+      assetType: AssetType.CORE,
+      locked: asset.freezeDelegate?.frozen || asset.permanentFreezeDelegate?.frozen,
       owner: asset.owner,
     }
   }
