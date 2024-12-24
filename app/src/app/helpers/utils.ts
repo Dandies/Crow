@@ -192,7 +192,7 @@ export async function sendAllTxsWithRetries(
   }
 }
 
-export function mapToUniversalAsset(asset: DAS.GetAssetResponse | Asset | AssetV1) {
+export function mapToUniversalAsset(asset: DAS.GetAssetResponse | Asset) {
   if ("id" in asset) {
     const grouping = asset.grouping?.find((g) => g.group_key === "collection")
     const collection = grouping?.group_value
@@ -211,7 +211,7 @@ export function mapToUniversalAsset(asset: DAS.GetAssetResponse | Asset | AssetV
       locked: !!asset.ownership.delegated && asset.ownership.frozen,
       owner: publicKey(asset.ownership.owner),
     }
-  } else if ("extensions" in asset) {
+  } else {
     const blob = getExtension(asset, ExtensionType.Blob)
     return {
       id: asset.publicKey,
